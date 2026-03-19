@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   Req,
+  StreamableFile,
   UseGuards
 } from '@nestjs/common';
 import { PERMISSIONS } from '../access/permissions';
@@ -22,6 +23,7 @@ import { ListEventsQueryDto } from './dto/list-events-query.dto';
 import { UpdateEventItemReconciliationDto } from './dto/update-event-item-reconciliation.dto';
 import { UpdateEventItemStatusDto } from './dto/update-event-item-status.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { EventExportsService } from './event-exports.service';
 import { EventsService } from './events.service';
 
 type AuthenticatedRequest = {
@@ -31,10 +33,15 @@ type AuthenticatedRequest = {
   };
 };
 
+const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
 @Controller('events')
 @UseGuards(SessionAuthGuard, PermissionsGuard)
 export class EventsController {
-  constructor(private readonly eventsService: EventsService) {}
+  constructor(
+    private readonly eventsService: EventsService,
+    private readonly eventExportsService: EventExportsService
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.EVENTS_READ)
@@ -55,6 +62,20 @@ export class EventsController {
       items: result.items as unknown[],
       statusCounts: result.statusCounts as Record<string, number>
     };
+  }
+
+  @Get(':eventId/exports/packing-list')
+  @RequirePermissions(PERMISSIONS.EXPORTS_READ)
+  async exportPackingList(@Param('eventId') eventId: string): Promise<StreamableFile> {
+    const { filename, buffer } = await this.eventExportsService.buildPackingListExport(eventId);
+    return this.toXlsxAttachment(buffer, filename);
+  }
+
+  @Get(':eventId/exports/post-event-report')
+  @RequirePermissions(PERMISSIONS.EXPORTS_READ)
+  async exportPostEventReport(@Param('eventId') eventId: string): Promise<StreamableFile> {
+    const { filename, buffer } = await this.eventExportsService.buildPostEventReportExport(eventId);
+    return this.toXlsxAttachment(buffer, filename);
   }
 
   @Post()
@@ -213,5 +234,12 @@ export class EventsController {
   ): Promise<{ items: unknown[] }> {
     const items = await this.eventsService.bulkUpdateItemStatus(eventId, body, request.user?.id ?? null);
     return { items };
+  }
+
+  private toXlsxAttachment(buffer: Buffer, filename: string): StreamableFile {
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME_TYPE,
+      disposition: `attachment; filename="${filename}"`
+    });
   }
 }

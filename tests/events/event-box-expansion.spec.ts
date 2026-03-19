@@ -6,6 +6,7 @@ import { AuthService, SessionAuthGuard } from '../../src/auth/auth.service';
 import { AuditService } from '../../src/audit/audit.service';
 import { PrismaService } from '../../src/database/prisma.service';
 import { EventsController } from '../../src/events/events.controller';
+import { EventExportsService } from '../../src/events/event-exports.service';
 import { EventsService } from '../../src/events/events.service';
 import { createEventBoxExpansionHarness } from './fixtures/event-box-expansion-harness';
 
@@ -33,6 +34,16 @@ describe('Event box expansion', () => {
       providers: [
         SessionAuthGuard,
         EventsService,
+        {
+          provide: EventExportsService,
+          useValue: {
+            buildPackingListExport: jest.fn(async () => ({ filename: 'mock.xlsx', buffer: Buffer.alloc(0) })),
+            buildPostEventReportExport: jest.fn(async () => ({
+              filename: 'mock.xlsx',
+              buffer: Buffer.alloc(0)
+            }))
+          }
+        },
         {
           provide: PrismaService,
           useValue: harness.prisma

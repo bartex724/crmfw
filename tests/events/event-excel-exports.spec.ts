@@ -1,12 +1,13 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
-import ExcelJS from 'exceljs';
+import * as ExcelJS from 'exceljs';
 import request = require('supertest');
 import { AccessModule } from '../../src/access/access.module';
 import { AuthService, SessionAuthGuard } from '../../src/auth/auth.service';
 import { AuditService } from '../../src/audit/audit.service';
 import { PrismaService } from '../../src/database/prisma.service';
 import { EventsController } from '../../src/events/events.controller';
+import { EventExportsService } from '../../src/events/event-exports.service';
 import { EventsService } from '../../src/events/events.service';
 import { createEventsHarness } from './fixtures/events-harness';
 
@@ -210,6 +211,7 @@ describe('Event Excel exports', () => {
       providers: [
         SessionAuthGuard,
         EventsService,
+        EventExportsService,
         {
           provide: PrismaService,
           useValue: harness.prisma
