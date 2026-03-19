@@ -10,9 +10,10 @@ const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     DATABASE_URL: z.string().trim().min(1).optional(),
-    APP_PUBLIC_BASE_URL: z.string().trim().url(),
+    APP_PUBLIC_BASE_URL: z.string().trim().url().optional(),
+    VERCEL_URL: z.string().trim().min(1).optional(),
     IMAGE_STORAGE_DRIVER: storageDriverSchema.default('local'),
-    IMAGE_STORAGE_LOCAL_PATH: optionalPathSchema,
+    IMAGE_STORAGE_LOCAL_PATH: optionalPathSchema.default('/tmp/crm-media'),
     IMAGE_STORAGE_NAS_PATH: optionalPathSchema
   })
   .superRefine((data, context) => {

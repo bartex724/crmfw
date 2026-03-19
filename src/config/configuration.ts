@@ -15,8 +15,14 @@ export type AppConfig = {
 };
 
 export function buildConfiguration(rawEnv: NodeJS.ProcessEnv = process.env): AppConfig {
-  const env = validateEnv(rawEnv);
-  const publicBaseUrl = normalizeBaseUrl(env.APP_PUBLIC_BASE_URL);
+  const env = validateEnv({
+    ...rawEnv,
+    APP_PUBLIC_BASE_URL:
+      rawEnv.APP_PUBLIC_BASE_URL?.trim() ||
+      (rawEnv.VERCEL_URL ? `https://${rawEnv.VERCEL_URL}` : 'http://localhost:3000'),
+    IMAGE_STORAGE_LOCAL_PATH: rawEnv.IMAGE_STORAGE_LOCAL_PATH?.trim() || '/tmp/crm-media'
+  });
+  const publicBaseUrl = normalizeBaseUrl(env.APP_PUBLIC_BASE_URL ?? 'http://localhost:3000');
   const activePath =
     env.IMAGE_STORAGE_DRIVER === 'local'
       ? env.IMAGE_STORAGE_LOCAL_PATH ?? ''
