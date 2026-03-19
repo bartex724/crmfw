@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-03-19T19:26:49Z"
+status: unknown
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-19T21:00:02.545Z"
 progress:
   total_phases: 5
-  completed_phases: 3
-  total_plans: 17
-  completed_plans: 16
+  completed_phases: 4
+  total_plans: 20
+  completed_plans: 18
 ---
 
 # Project State
@@ -19,26 +19,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** Teams can prepare and reconcile event packing quickly without losing stock accuracy.  
-**Current focus:** Phase 04 — box-automation-and-qr-flow
+**Current focus:** Phase 05 — reconciliation-and-excel-exports
 
 ## Current Position
 
-Phase: 04 (box-automation-and-qr-flow) — EXECUTING
-Plan: 4 of 4
+Phase: 05 (reconciliation-and-excel-exports) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
-- Total plans completed: 16
-- Average duration: ~18 min
-- Total execution time: 287 min (4.8 hours)
+- Total plans completed: 18
+- Average duration: ~16 min
+- Total execution time: 296 min (4.9 hours)
 
 Recent plan metrics:
 
+- Phase 05 P01 - 9 min - 2 tasks - 7 files
+- Phase 04 P04 - 24 min - 2 tasks - 4 files
 - Phase 04 P03 - 24 min - 2 tasks - 9 files
 - Phase 04 P02 - 15 min - 2 tasks - 8 files
 - Phase 04 P01 - 19 min - 2 tasks - 9 files
-- Phase 03 P01 - 43 min - 3 tasks - 12 files
-- Phase 03 P02 - 36 min - 3 tasks - 8 files
 
 ## Accumulated Context
 
@@ -71,6 +71,8 @@ Recent plan metrics:
 - [Phase 04]: QR payload remains canonical plain URL: {publicBaseUrl}/boxes/{boxCode}/scan.
 - [Phase 04]: Box QR API contract returns { boxId, boxCode, payloadUrl, qrDataUrl } generated via QRCode.toDataURL.
 - [Phase 04]: QR endpoint stays under SessionAuthGuard + PermissionsGuard with boxes:read authorization.
+- [Phase 05]: Reconciliation writes are allowed for DRAFT, ACTIVE, and CLOSED event lifecycle states.
+- [Phase 05]: Only lostQuantity delta mutates central stock and always records stock-adjustment + audit metadata.
 
 ### Pending Todos
 
@@ -82,6 +84,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-19T19:25:46.800Z
-Stopped at: Completed 04-03-PLAN.md
-Resume file: .planning/phases/04-box-automation-and-qr-flow/04-04-PLAN.md
+Last session: 2026-03-19T21:00:02.540Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: .planning/phases/05-reconciliation-and-excel-exports/05-02-PLAN.md

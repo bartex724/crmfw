@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation and Access Control** - production baseline, auth, and role permissions
 - [x] **Phase 2: Inventory Catalog and Media** - item, category, photo, and list workflow core (completed 2026-03-19)
 - [x] **Phase 3: Event Packing Workflow** - event-as-packing-list lifecycle and status handling (completed 2026-03-19)
-- [ ] **Phase 4: Box Automation and QR Flow** - box entities, auto-add logic, and scan entrypoint
+- [x] **Phase 4: Box Automation and QR Flow** - box entities, auto-add logic, and scan entrypoint (completed 2026-03-19)
 - [ ] **Phase 5: Reconciliation and Excel Exports** - loss/return reconciliation and operational reports
 
 ## Phase Details
@@ -100,9 +100,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: Implement loss and return reconciliation logic with audit trail
-- [ ] 05-02: Build Excel export generators for packing list and post-event report
-- [ ] 05-03: End-to-end validation and MVP release hardening
+- [x] 05-01-PLAN.md - Implement event-item reconciliation quantities with delta-based stock correction and audit trail
+- [ ] 05-02-PLAN.md - Build deterministic packing/post-event XLSX exports and align export-access permissions
+- [ ] 05-03-PLAN.md - Add cross-flow reconciliation/export hardening and phase release-gate regressions
 
 ## Progress
 
@@ -114,5 +114,5 @@ Phases execute in numeric order: 2 -> 2.1 -> 2.2 -> 3 -> 3.1 -> 4
 | 1. Foundation and Access Control | 8/8 | Complete | 2026-03-19 |
 | 2. Inventory Catalog and Media | 3/3 | Complete    | 2026-03-19 |
 | 3. Event Packing Workflow | 2/2 | Complete    | 2026-03-19 |
-| 4. Box Automation and QR Flow | 3/4 | In Progress|  |
-| 5. Reconciliation and Excel Exports | 0/3 | Not started | - |
+| 4. Box Automation and QR Flow | 4/4 | Complete   | 2026-03-19 |
+| 5. Reconciliation and Excel Exports | 1/3 | In Progress | - |

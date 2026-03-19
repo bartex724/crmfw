@@ -34,14 +34,14 @@
 - [x] **BOX-03**: Adding a box to an event automatically adds all items assigned to that box
 - [x] **BOX-04**: Adding a single item to an event does not automatically add the full box
 - [x] **BOX-05**: Each box has a unique QR code
-- [ ] **BOX-06**: Scanning a box QR code opens the box page to manage related event item statuses
+- [x] **BOX-06**: Scanning a box QR code opens the box page to manage related event item statuses
 
 ### Losses and Returns
 
-- [ ] **LOS-01**: User can record lost quantity for an event item
-- [ ] **LOS-02**: Recording loss automatically decreases central inventory quantity by the same amount
-- [ ] **LOS-03**: User can mark event items as returned and capture returned quantity for reconciliation
-- [ ] **LOS-04**: System stores an audit trail for loss and return adjustments
+- [x] **LOS-01**: User can record lost quantity for an event item
+- [x] **LOS-02**: Recording loss automatically decreases central inventory quantity by the same amount
+- [x] **LOS-03**: User can mark event items as returned and capture returned quantity for reconciliation
+- [x] **LOS-04**: System stores an audit trail for loss and return adjustments
 
 ### Photos and UI
 
@@ -113,11 +113,11 @@
 | BOX-03 | Phase 4 | Complete |
 | BOX-04 | Phase 4 | Complete |
 | BOX-05 | Phase 4 | Complete |
-| BOX-06 | Phase 4 | Pending |
-| LOS-01 | Phase 5 | Pending |
-| LOS-02 | Phase 5 | Pending |
-| LOS-03 | Phase 5 | Pending |
-| LOS-04 | Phase 5 | Pending |
+| BOX-06 | Phase 4 | Complete |
+| LOS-01 | Phase 5 | Complete |
+| LOS-02 | Phase 5 | Complete |
+| LOS-03 | Phase 5 | Complete |
+| LOS-04 | Phase 5 | Complete |
 | XLS-01 | Phase 5 | Pending |
 | XLS-02 | Phase 5 | Pending |
 | XLS-03 | Phase 5 | Pending |
