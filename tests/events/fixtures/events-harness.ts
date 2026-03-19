@@ -118,7 +118,8 @@ export function createEventsHarness() {
   const items: ItemRecord[] = [
     { id: 'item-1', name: 'Cable', code: 'ITM-0001', quantity: 10 },
     { id: 'item-2', name: 'Speaker', code: 'ITM-0002', quantity: 5 },
-    { id: 'item-3', name: 'Lamp', code: 'ITM-0003', quantity: 4 }
+    { id: 'item-3', name: 'Lamp', code: 'ITM-0003', quantity: 4 },
+    { id: 'item-4', name: 'Cable', code: 'ITM-0000', quantity: 7 }
   ];
 
   const prisma = {
