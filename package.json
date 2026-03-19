@@ -5,6 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "npm run prisma:generate && tsc -p tsconfig.build.json",
+    "postinstall": "npm run prisma:generate",
     "start": "node dist/src/main.js",
     "start:dev": "ts-node -r tsconfig-paths/register src/main.ts",
     "test": "jest --config ./jest.config.ts --runInBand",
