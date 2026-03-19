@@ -30,9 +30,9 @@
 ### Boxes and QR
 
 - [x] **BOX-01**: User can manage boxes in a dedicated Boxes section separate from the main items list
-- [ ] **BOX-02**: User can assign inventory items to a box definition
-- [ ] **BOX-03**: Adding a box to an event automatically adds all items assigned to that box
-- [ ] **BOX-04**: Adding a single item to an event does not automatically add the full box
+- [x] **BOX-02**: User can assign inventory items to a box definition
+- [x] **BOX-03**: Adding a box to an event automatically adds all items assigned to that box
+- [x] **BOX-04**: Adding a single item to an event does not automatically add the full box
 - [ ] **BOX-05**: Each box has a unique QR code
 - [ ] **BOX-06**: Scanning a box QR code opens the box page to manage related event item statuses
 
@@ -109,9 +109,9 @@
 | EVT-04 | Phase 3 | Complete |
 | EVT-05 | Phase 3 | Complete |
 | BOX-01 | Phase 4 | Complete |
-| BOX-02 | Phase 4 | Pending |
-| BOX-03 | Phase 4 | Pending |
-| BOX-04 | Phase 4 | Pending |
+| BOX-02 | Phase 4 | Complete |
+| BOX-03 | Phase 4 | Complete |
+| BOX-04 | Phase 4 | Complete |
 | BOX-05 | Phase 4 | Pending |
 | BOX-06 | Phase 4 | Pending |
 | LOS-01 | Phase 5 | Pending |
