@@ -61,7 +61,7 @@ Each task was committed atomically:
 1. **Task 1: Add cross-flow regression and access tests for reconciliation-to-export behavior** - `db6cad8` (test)
 2. **Task 2: Harden reconciliation/export internals for deterministic release-gate behavior** - `035e23c` (fix)
 
-**Plan metadata:** pending final docs commit
+**Plan metadata:** `1d9fdac` (docs completion), `9cadb17` (state session refresh)
 
 ## Files Created/Modified
 
