@@ -1,0 +1,43 @@
+export type AuthUser = {
+  id: string;
+  email: string;
+  role: string;
+};
+
+export type Category = {
+  id: string;
+  name: string;
+  description: string | null;
+  itemCount?: number;
+};
+
+export type Item = {
+  id: string;
+  name: string;
+  code: string;
+  quantity: number;
+  notes: string | null;
+  categoryId: string;
+  category: {
+    id: string;
+    name: string;
+    description: string | null;
+  } | null;
+  isUnavailable: boolean;
+};
+
+export type EventRow = {
+  id: string;
+  name: string;
+  eventDate: string;
+  lifecycleStatus: string;
+  location: string;
+  notes?: string | null;
+};
+
+export type BoxRow = {
+  id: string;
+  boxCode: string;
+  name: string;
+  notes?: string | null;
+};

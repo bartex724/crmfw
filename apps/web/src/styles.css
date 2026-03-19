@@ -1,0 +1,109 @@
+:root {
+  --bg-main: #eef5f7;
+  --bg-ink: #0f172a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 5% 0%, #d0ebff, transparent 33%),
+    radial-gradient(circle at 95% 100%, #d3f9d8, transparent 36%),
+    var(--bg-main);
+  color: var(--bg-ink);
+}
+
+.page-center {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 460px;
+  border: 1px solid #cdddeb;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.09);
+}
+
+.form-space {
+  margin-top: 18px;
+}
+
+.full-btn {
+  width: 100%;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-sider {
+  background: linear-gradient(180deg, #083344 0%, #0f172a 100%) !important;
+  border-right: 1px solid #083344;
+}
+
+.sider-brand {
+  color: #ffffff;
+  padding: 18px 16px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.app-sider .ant-menu {
+  background: transparent;
+  color: #dbeafe;
+}
+
+.app-sider .ant-menu-item-selected {
+  background: #0b7285 !important;
+  color: #ffffff !important;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #dbe7f0;
+  padding: 0 18px;
+}
+
+.app-content {
+  padding: 16px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.top-gap {
+  margin-top: 14px;
+}
+
+@media (max-width: 992px) {
+  .app-sider {
+    width: 84px !important;
+    min-width: 84px !important;
+    max-width: 84px !important;
+  }
+
+  .sider-brand {
+    font-size: 14px;
+    padding: 12px 10px;
+  }
+}
