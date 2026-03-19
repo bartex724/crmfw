@@ -21,6 +21,7 @@ import {
   ListEventsQueryDto
 } from './dto/list-events-query.dto';
 import { CreateEventDto } from './dto/create-event.dto';
+import { UpdateEventItemReconciliationDto } from './dto/update-event-item-reconciliation.dto';
 import { UpdateEventItemStatusDto } from './dto/update-event-item-status.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 
@@ -44,6 +45,8 @@ type EventItemWithRelations = {
   eventId: string;
   itemId: string;
   plannedQuantity: number;
+  lostQuantity: number;
+  returnedQuantity: number;
   status: EventItemStatus;
   boxCode: string | null;
   createdAt: Date;
@@ -770,6 +773,139 @@ export class EventsService {
     return this.toEventItemResponse(updated as EventItemWithRelations);
   }
 
+  async updateItemReconciliation(
+    eventId: string,
+    eventItemId: string,
+    dto: UpdateEventItemReconciliationDto,
+    actorUserId: string | null
+  ): Promise<Record<string, unknown>> {
+    const event = await this.ensureEventExists(eventId);
+    this.ensureEventAllowsReconciliation(event.lifecycleStatus);
+
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const eventItem = await tx.eventItem.findFirst({
+          where: {
+            id: eventItemId,
+            eventId
+          },
+          include: {
+            item: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                quantity: true
+              }
+            }
+          }
+        });
+        if (!eventItem) {
+          throw new NotFoundException('Event item not found in this event');
+        }
+        if (!eventItem.item) {
+          throw new NotFoundException('Inventory item not found');
+        }
+
+        const nextLostQuantity = this.validateReconciliationQuantity(
+          dto.lostQuantity,
+          'lostQuantity',
+          eventItem.plannedQuantity
+        );
+        const nextReturnedQuantity = this.validateReconciliationQuantity(
+          dto.returnedQuantity,
+          'returnedQuantity',
+          eventItem.plannedQuantity
+        );
+
+        const previousLostQuantity = eventItem.lostQuantity ?? 0;
+        const previousReturnedQuantity = eventItem.returnedQuantity ?? 0;
+        const lossDelta = nextLostQuantity - previousLostQuantity;
+        const beforeItemQuantity = eventItem.item.quantity;
+        let afterItemQuantity = beforeItemQuantity;
+        let stockDelta = 0;
+
+        if (lossDelta !== 0) {
+          afterItemQuantity = beforeItemQuantity - lossDelta;
+          if (afterItemQuantity < 0) {
+            throw new BadRequestException('Insufficient stock for reconciliation delta');
+          }
+
+          await tx.item.update({
+            where: {
+              id: eventItem.itemId
+            },
+            data: {
+              quantity: afterItemQuantity
+            }
+          });
+
+          stockDelta = afterItemQuantity - beforeItemQuantity;
+
+          await tx.stockAdjustment.create({
+            data: {
+              itemId: eventItem.itemId,
+              actorUserId,
+              reason: `event:${eventId}:reconciliation`,
+              beforeQuantity: beforeItemQuantity,
+              afterQuantity: afterItemQuantity,
+              delta: stockDelta
+            }
+          });
+        }
+
+        const updated = await tx.eventItem.update({
+          where: {
+            id: eventItem.id
+          },
+          data: {
+            lostQuantity: nextLostQuantity,
+            returnedQuantity: nextReturnedQuantity
+          },
+          include: {
+            item: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                quantity: true
+              }
+            }
+          }
+        });
+
+        return {
+          updated,
+          metadata: {
+            previousLostQuantity,
+            nextLostQuantity,
+            previousReturnedQuantity,
+            nextReturnedQuantity,
+            stockDelta,
+            beforeItemQuantity,
+            afterItemQuantity
+          }
+        };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+      }
+    );
+
+    await this.auditService.record({
+      action: 'event.item.reconciliation.updated',
+      entityType: 'event_item',
+      entityId: eventItemId,
+      actorUserId,
+      metadata: {
+        eventId,
+        ...result.metadata
+      }
+    });
+
+    return this.toEventItemResponse(result.updated as EventItemWithRelations);
+  }
+
   async bulkUpdateItemStatus(
     eventId: string,
     dto: BulkUpdateEventItemStatusDto,
@@ -896,6 +1032,33 @@ export class EventsService {
     if (lifecycleStatus !== EventLifecycleStatus.ACTIVE) {
       throw new BadRequestException('Event must be ACTIVE to change item statuses');
     }
+  }
+
+  private ensureEventAllowsReconciliation(lifecycleStatus: EventLifecycleStatus): void {
+    const allowedStates: EventLifecycleStatus[] = [
+      EventLifecycleStatus.DRAFT,
+      EventLifecycleStatus.ACTIVE,
+      EventLifecycleStatus.CLOSED
+    ];
+    if (!allowedStates.includes(lifecycleStatus)) {
+      throw new BadRequestException('Event does not allow reconciliation updates');
+    }
+  }
+
+  private validateReconciliationQuantity(
+    value: number,
+    fieldName: 'lostQuantity' | 'returnedQuantity',
+    plannedQuantity: number
+  ): number {
+    if (!Number.isInteger(value)) {
+      throw new BadRequestException(`${fieldName} must be an integer`);
+    }
+
+    if (value < 0 || value > plannedQuantity) {
+      throw new BadRequestException(`${fieldName} must be between 0 and plannedQuantity`);
+    }
+
+    return value;
   }
 
   private assertTransitionAllowed(
@@ -1159,6 +1322,8 @@ export class EventsService {
         eventId: event.id,
         itemId: '',
         plannedQuantity: 0,
+        lostQuantity: 0,
+        returnedQuantity: 0,
         status: item.status,
         boxCode: item.boxCode,
         createdAt: event.createdAt,
@@ -1208,6 +1373,8 @@ export class EventsService {
       itemName: row.item?.name ?? null,
       itemCode: row.item?.code ?? null,
       plannedQuantity: row.plannedQuantity,
+      lostQuantity: row.lostQuantity,
+      returnedQuantity: row.returnedQuantity,
       status: row.status,
       statusLabel: EVENT_ITEM_STATUS_LABELS[row.status],
       boxCode,

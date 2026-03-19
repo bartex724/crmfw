@@ -19,6 +19,7 @@ import { BulkUpdateEventItemStatusDto } from './dto/bulk-update-event-item-statu
 import { CreateEventDto } from './dto/create-event.dto';
 import { ListEventItemsQueryDto } from './dto/list-event-items-query.dto';
 import { ListEventsQueryDto } from './dto/list-events-query.dto';
+import { UpdateEventItemReconciliationDto } from './dto/update-event-item-reconciliation.dto';
 import { UpdateEventItemStatusDto } from './dto/update-event-item-status.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { EventsService } from './events.service';
@@ -178,6 +179,23 @@ export class EventsController {
     @Req() request: AuthenticatedRequest
   ): Promise<{ item: unknown }> {
     const item = await this.eventsService.updateItemStatus(
+      eventId,
+      eventItemId,
+      body,
+      request.user?.id ?? null
+    );
+    return { item };
+  }
+
+  @Patch(':eventId/items/:eventItemId/reconciliation')
+  @RequirePermissions(PERMISSIONS.EVENTS_WRITE)
+  async updateItemReconciliation(
+    @Param('eventId') eventId: string,
+    @Param('eventItemId') eventItemId: string,
+    @Body() body: UpdateEventItemReconciliationDto,
+    @Req() request: AuthenticatedRequest
+  ): Promise<{ item: unknown }> {
+    const item = await this.eventsService.updateItemReconciliation(
       eventId,
       eventItemId,
       body,
