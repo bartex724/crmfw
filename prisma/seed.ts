@@ -1,7 +1,16 @@
 import * as argon2 from 'argon2';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, RoleCode } from '@prisma/client';
 
-const prisma = new PrismaClient();
+const databaseUrl = process.env.DATABASE_URL?.trim();
+
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL is required for prisma seed.');
+}
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: databaseUrl })
+});
 
 type PermissionSeed = {
   code: string;
