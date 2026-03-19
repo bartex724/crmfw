@@ -87,6 +87,8 @@ const EVENT_ITEM_STATUS_ORDER: EventItemStatus[] = [
   EventItemStatus.RETURNED,
   EventItemStatus.LOSS
 ];
+const SERIALIZABLE_CONFLICT_ERROR_CODE = 'P2034';
+const MAX_RECONCILIATION_RETRY_ATTEMPTS = 5;
 
 @Injectable()
 export class EventsService {
@@ -780,116 +782,118 @@ export class EventsService {
     actorUserId: string | null
   ): Promise<Record<string, unknown>> {
     const event = await this.ensureEventExists(eventId);
-    this.ensureEventAllowsReconciliation(event.lifecycleStatus);
+    this.ensureEventReconciliationAllowed(event.lifecycleStatus);
 
-    const result = await this.prisma.$transaction(
-      async (tx) => {
-        const eventItem = await tx.eventItem.findFirst({
-          where: {
-            id: eventItemId,
-            eventId
-          },
-          include: {
-            item: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-                quantity: true
+    const result = await this.runSerializableWithRetry(async () =>
+      this.prisma.$transaction(
+        async (tx) => {
+          const eventItem = await tx.eventItem.findFirst({
+            where: {
+              id: eventItemId,
+              eventId
+            },
+            include: {
+              item: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                  quantity: true
+                }
               }
             }
+          });
+          if (!eventItem) {
+            throw new NotFoundException('Event item not found in this event');
           }
-        });
-        if (!eventItem) {
-          throw new NotFoundException('Event item not found in this event');
-        }
-        if (!eventItem.item) {
-          throw new NotFoundException('Inventory item not found');
-        }
-
-        const nextLostQuantity = this.validateReconciliationQuantity(
-          dto.lostQuantity,
-          'lostQuantity',
-          eventItem.plannedQuantity
-        );
-        const nextReturnedQuantity = this.validateReconciliationQuantity(
-          dto.returnedQuantity,
-          'returnedQuantity',
-          eventItem.plannedQuantity
-        );
-
-        const previousLostQuantity = eventItem.lostQuantity ?? 0;
-        const previousReturnedQuantity = eventItem.returnedQuantity ?? 0;
-        const lossDelta = nextLostQuantity - previousLostQuantity;
-        const beforeItemQuantity = eventItem.item.quantity;
-        let afterItemQuantity = beforeItemQuantity;
-        let stockDelta = 0;
-
-        if (lossDelta !== 0) {
-          afterItemQuantity = beforeItemQuantity - lossDelta;
-          if (afterItemQuantity < 0) {
-            throw new BadRequestException('Insufficient stock for reconciliation delta');
+          if (!eventItem.item) {
+            throw new NotFoundException('Inventory item not found');
           }
 
-          await tx.item.update({
+          const nextLostQuantity = this.validateReconciliationQuantity(
+            dto.lostQuantity,
+            'lostQuantity',
+            eventItem.plannedQuantity
+          );
+          const nextReturnedQuantity = this.validateReconciliationQuantity(
+            dto.returnedQuantity,
+            'returnedQuantity',
+            eventItem.plannedQuantity
+          );
+
+          const previousLostQuantity = eventItem.lostQuantity ?? 0;
+          const previousReturnedQuantity = eventItem.returnedQuantity ?? 0;
+          const lossDelta = nextLostQuantity - previousLostQuantity;
+          const beforeItemQuantity = eventItem.item.quantity;
+          let afterItemQuantity = beforeItemQuantity;
+          let stockDelta = 0;
+
+          if (lossDelta !== 0) {
+            afterItemQuantity = beforeItemQuantity - lossDelta;
+            if (afterItemQuantity < 0) {
+              throw new BadRequestException('Insufficient stock for reconciliation delta');
+            }
+
+            await tx.item.update({
+              where: {
+                id: eventItem.itemId
+              },
+              data: {
+                quantity: afterItemQuantity
+              }
+            });
+
+            stockDelta = afterItemQuantity - beforeItemQuantity;
+
+            await tx.stockAdjustment.create({
+              data: {
+                itemId: eventItem.itemId,
+                actorUserId,
+                reason: `event:${eventId}:reconciliation`,
+                beforeQuantity: beforeItemQuantity,
+                afterQuantity: afterItemQuantity,
+                delta: stockDelta
+              }
+            });
+          }
+
+          const updated = await tx.eventItem.update({
             where: {
-              id: eventItem.itemId
+              id: eventItem.id
             },
             data: {
-              quantity: afterItemQuantity
-            }
-          });
-
-          stockDelta = afterItemQuantity - beforeItemQuantity;
-
-          await tx.stockAdjustment.create({
-            data: {
-              itemId: eventItem.itemId,
-              actorUserId,
-              reason: `event:${eventId}:reconciliation`,
-              beforeQuantity: beforeItemQuantity,
-              afterQuantity: afterItemQuantity,
-              delta: stockDelta
-            }
-          });
-        }
-
-        const updated = await tx.eventItem.update({
-          where: {
-            id: eventItem.id
-          },
-          data: {
-            lostQuantity: nextLostQuantity,
-            returnedQuantity: nextReturnedQuantity
-          },
-          include: {
-            item: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-                quantity: true
+              lostQuantity: nextLostQuantity,
+              returnedQuantity: nextReturnedQuantity
+            },
+            include: {
+              item: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                  quantity: true
+                }
               }
             }
-          }
-        });
+          });
 
-        return {
-          updated,
-          metadata: {
-            previousLostQuantity,
-            nextLostQuantity,
-            previousReturnedQuantity,
-            nextReturnedQuantity,
-            stockDelta,
-            beforeItemQuantity,
-            afterItemQuantity
-          }
-        };
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
-      }
+          return {
+            updated,
+            metadata: {
+              previousLostQuantity,
+              nextLostQuantity,
+              previousReturnedQuantity,
+              nextReturnedQuantity,
+              stockDelta,
+              beforeItemQuantity,
+              afterItemQuantity
+            }
+          };
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+        }
+      )
     );
 
     await this.auditService.record({
@@ -1034,7 +1038,7 @@ export class EventsService {
     }
   }
 
-  private ensureEventAllowsReconciliation(lifecycleStatus: EventLifecycleStatus): void {
+  private ensureEventReconciliationAllowed(lifecycleStatus: EventLifecycleStatus): void {
     const allowedStates: EventLifecycleStatus[] = [
       EventLifecycleStatus.DRAFT,
       EventLifecycleStatus.ACTIVE,
@@ -1227,6 +1231,32 @@ export class EventsService {
       code?: string;
     };
     return prismaError.code === 'P2002';
+  }
+
+  private async runSerializableWithRetry<T>(operation: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; attempt <= MAX_RECONCILIATION_RETRY_ATTEMPTS; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        const isRetryable = this.isSerializableConflictError(error);
+        if (!isRetryable || attempt === MAX_RECONCILIATION_RETRY_ATTEMPTS) {
+          throw error;
+        }
+      }
+    }
+
+    throw new ConflictException('Reconciliation transaction retries exhausted');
+  }
+
+  private isSerializableConflictError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const prismaError = error as {
+      code?: string;
+    };
+    return prismaError.code === SERIALIZABLE_CONFLICT_ERROR_CODE;
   }
 
   private resolveEventSort(

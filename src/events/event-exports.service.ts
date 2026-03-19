@@ -42,7 +42,7 @@ export class EventExportsService {
 
   async buildPackingListExport(eventId: string): Promise<WorkbookResult> {
     const event = await this.loadExportEvent(eventId);
-    const rows = this.mapExportRows(event);
+    const rows = this.sortExportRows(this.mapExportRows(event));
     const buffer = await this.buildWorkbook(XLSX_SHEET_NAME_PACKING_LIST, [
       { header: 'Name', key: 'name', width: 36 },
       { header: 'Quantity', key: 'quantity', width: 12 },
@@ -56,14 +56,14 @@ export class EventExportsService {
     })));
 
     return {
-      filename: this.buildFilename(event.name, 'packing-list'),
+      filename: this.buildExportFilename(event.name, 'packing-list', new Date()),
       buffer
     };
   }
 
   async buildPostEventReportExport(eventId: string): Promise<WorkbookResult> {
     const event = await this.loadExportEvent(eventId);
-    const rows = this.mapExportRows(event);
+    const rows = this.sortExportRows(this.mapExportRows(event));
     const buffer = await this.buildWorkbook(XLSX_SHEET_NAME_POST_EVENT_REPORT, [
       { header: 'Name', key: 'name', width: 36 },
       { header: 'Quantity', key: 'quantity', width: 12 },
@@ -79,7 +79,7 @@ export class EventExportsService {
     })));
 
     return {
-      filename: this.buildFilename(event.name, 'post-event-report'),
+      filename: this.buildExportFilename(event.name, 'post-event-report', new Date()),
       buffer
     };
   }
@@ -120,24 +120,26 @@ export class EventExportsService {
   }
 
   private mapExportRows(event: ExportSourceEvent): ExportRow[] {
-    return event.items
-      .map((row) => ({
-        itemName: row.item.name,
-        itemCode: row.item.code,
-        plannedQuantity: row.plannedQuantity,
-        lostQuantity: row.lostQuantity ?? 0,
-        boxCode: row.boxCode ?? '',
-        notes: ''
-      }))
-      .sort(
-        (left, right) =>
-          left.itemName.localeCompare(right.itemName) || left.itemCode.localeCompare(right.itemCode)
-      );
+    return event.items.map((row) => ({
+      itemName: row.item.name,
+      itemCode: row.item.code,
+      plannedQuantity: row.plannedQuantity,
+      lostQuantity: row.lostQuantity ?? 0,
+      boxCode: row.boxCode ?? '',
+      notes: ''
+    }));
   }
 
-  private buildFilename(eventName: string, type: EventExportType): string {
+  private sortExportRows(rows: ExportRow[]): ExportRow[] {
+    return [...rows].sort(
+      (left, right) =>
+        left.itemName.localeCompare(right.itemName) || left.itemCode.localeCompare(right.itemCode)
+    );
+  }
+
+  private buildExportFilename(eventName: string, type: EventExportType, nowUtc: Date): string {
     const eventSlug = this.toSlug(eventName);
-    const timestamp = this.formatUtcTimestamp(new Date());
+    const timestamp = this.formatUtcTimestamp(nowUtc);
     return `event-${eventSlug}-${type}-${timestamp}.xlsx`;
   }
 
