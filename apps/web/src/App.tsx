@@ -1,105 +1,57 @@
-import { useMemo } from 'react';
-import {
-  Alert,
-  App as AntApp,
-  Button,
-  Card,
-  Col,
-  Form,
-  Input,
-  InputNumber,
-  Layout,
-  Menu,
-  Row,
-  Select,
-  Space,
-  Spin,
-  Switch,
-  Table,
-  Tag,
-  Typography
-} from 'antd';
+import { useMemo, useState } from 'react';
+import { App as AntApp, Button, Card, Form, Input, InputNumber, Layout, Menu, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { api, ApiError } from './lib/api';
 import { useUiStore } from './stores/ui.store';
-import type { Category, Item } from './lib/types';
+import type { BoxRow, EventItemRow, EventRow, Item } from './lib/types';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
 
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8)
-});
+type ModuleKey = 'inventory' | 'events' | 'boxes';
+type ItemStatus = EventItemRow['status'];
 
-const createCategorySchema = z.object({
-  name: z.string().min(1).max(120),
-  description: z.string().max(255).optional().or(z.literal(''))
-});
-
-const createItemSchema = z.object({
-  name: z.string().min(1).max(180),
-  code: z.string().max(80).optional().or(z.literal('')),
-  categoryId: z.string().uuid(),
-  quantity: z.number().int().min(0).default(0),
-  notes: z.string().max(2000).optional().or(z.literal(''))
-});
+const loginSchema = z.object({ email: z.string().email(), password: z.string().min(8) });
+const createCategorySchema = z.object({ name: z.string().min(1).max(120), description: z.string().max(255).optional().or(z.literal('')) });
+const createItemSchema = z.object({ name: z.string().min(1).max(180), code: z.string().max(80).optional().or(z.literal('')), categoryId: z.string().uuid(), quantity: z.number().int().min(0).default(0), notes: z.string().max(2000).optional().or(z.literal('')) });
+const createEventSchema = z.object({ name: z.string().min(1).max(180), eventDate: z.string().min(1), location: z.string().min(1).max(180), notes: z.string().max(2000).optional().or(z.literal('')) });
+const addEventItemSchema = z.object({ itemId: z.string().uuid(), plannedQuantity: z.number().int().min(1) });
+const createBoxSchema = z.object({ boxCode: z.string().min(1).max(80), name: z.string().min(1).max(120), notes: z.string().max(2000).optional().or(z.literal('')) });
 
 type LoginForm = z.infer<typeof loginSchema>;
 type CreateCategoryForm = z.infer<typeof createCategorySchema>;
 type CreateItemForm = z.infer<typeof createItemSchema>;
+type CreateEventForm = z.infer<typeof createEventSchema>;
+type AddEventItemForm = z.infer<typeof addEventItemSchema>;
+type CreateBoxForm = z.infer<typeof createBoxSchema>;
 
-function buildItemsParams(filters: {
-  search: string;
-  categoryId: string;
-  hideUnavailable: boolean;
-  sortBy: 'name' | 'code' | 'quantity' | 'updatedAt';
-  sortOrder: 'asc' | 'desc';
-}): URLSearchParams {
+function errMsg(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? error.message : fallback;
+}
+
+function buildInventoryParams(search: string, categoryId: string): URLSearchParams {
   const params = new URLSearchParams();
   params.set('layout', 'dense');
-  params.set('sortBy', filters.sortBy);
-  params.set('sortOrder', filters.sortOrder);
-  if (filters.search.trim()) {
-    params.set('search', filters.search.trim());
-  }
-  if (filters.categoryId) {
-    params.set('categoryId', filters.categoryId);
-  }
-  if (filters.hideUnavailable) {
-    params.set('hideUnavailable', 'true');
-  }
+  params.set('sortBy', 'name');
+  params.set('sortOrder', 'asc');
+  if (search.trim()) params.set('search', search.trim());
+  if (categoryId) params.set('categoryId', categoryId);
   return params;
 }
 
 export default function App(): JSX.Element {
-  return (
-    <AntApp>
-      <RootApp />
-    </AntApp>
-  );
+  return <AntApp><RootApp /></AntApp>;
 }
 
 function RootApp(): JSX.Element {
   const queryClient = useQueryClient();
   const ant = AntApp.useApp();
-
-  const authQuery = useQuery({
-    queryKey: ['auth', 'me'],
-    queryFn: api.me,
-    retry: false
-  });
-
-  const loginForm = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: '',
-      password: ''
-    }
-  });
+  const authQuery = useQuery({ queryKey: ['auth', 'me'], queryFn: api.me, retry: false });
+  const loginForm = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '' } });
 
   const loginMutation = useMutation({
     mutationFn: api.login,
@@ -107,10 +59,7 @@ function RootApp(): JSX.Element {
       await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
       ant.message.success('Logged in.');
     },
-    onError: (error) => {
-      const message = error instanceof ApiError ? error.message : 'Login failed';
-      ant.message.error(message);
-    }
+    onError: (error) => ant.message.error(errMsg(error, 'Login failed'))
   });
 
   const logoutMutation = useMutation({
@@ -120,101 +69,41 @@ function RootApp(): JSX.Element {
       queryClient.removeQueries({ queryKey: ['inventory'] });
       queryClient.removeQueries({ queryKey: ['events'] });
       queryClient.removeQueries({ queryKey: ['boxes'] });
-      ant.message.success('Logged out.');
     }
   });
 
-  if (authQuery.isLoading) {
-    return (
-      <div className="page-center">
-        <Spin size="large" />
-      </div>
-    );
-  }
+  if (authQuery.isLoading) return <div className="page-center"><Spin size="large" /></div>;
 
   if (authQuery.isError || !authQuery.data?.user) {
     return (
       <div className="login-shell">
         <Card className="login-card" bordered={false}>
           <Title level={3}>CRM Frontend MVP</Title>
-          <Text type="secondary">Sign in with your backend account.</Text>
-          <Form
-            layout="vertical"
-            className="form-space"
-            onFinish={loginForm.handleSubmit(async (values) => {
-              await loginMutation.mutateAsync(values);
-            })}
-          >
-            <Form.Item
-              label="Email"
-              validateStatus={loginForm.formState.errors.email ? 'error' : ''}
-              help={loginForm.formState.errors.email?.message}
-            >
-              <Input {...loginForm.register('email')} autoComplete="email" />
-            </Form.Item>
-            <Form.Item
-              label="Password"
-              validateStatus={loginForm.formState.errors.password ? 'error' : ''}
-              help={loginForm.formState.errors.password?.message}
-            >
-              <Input.Password {...loginForm.register('password')} autoComplete="current-password" />
-            </Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loginMutation.isPending}
-              className="full-btn"
-            >
-              Login
-            </Button>
+          <Form layout="vertical" className="form-space" onFinish={loginForm.handleSubmit(async (v) => loginMutation.mutateAsync(v))}>
+            <Form.Item label="Email"><Input {...loginForm.register('email')} /></Form.Item>
+            <Form.Item label="Password"><Input.Password {...loginForm.register('password')} /></Form.Item>
+            <Button type="primary" htmlType="submit" loading={loginMutation.isPending} className="full-btn">Login</Button>
           </Form>
         </Card>
       </div>
     );
   }
 
-  return (
-    <MainShell
-      userEmail={authQuery.data.user.email}
-      userRole={authQuery.data.user.role}
-      onLogout={() => logoutMutation.mutate()}
-    />
-  );
+  return <MainShell userEmail={authQuery.data.user.email} userRole={authQuery.data.user.role} onLogout={() => logoutMutation.mutate()} />;
 }
 
-function MainShell(props: {
-  userEmail: string;
-  userRole: string;
-  onLogout: () => void;
-}): JSX.Element {
+function MainShell(props: { userEmail: string; userRole: string; onLogout: () => void }): JSX.Element {
   const activeModule = useUiStore((s) => s.activeModule);
   const setActiveModule = useUiStore((s) => s.setActiveModule);
-
   return (
     <Layout className="app-shell">
       <Sider width={250} className="app-sider">
         <div className="sider-brand">Warehouse CRM</div>
-        <Menu
-          mode="inline"
-          selectedKeys={[activeModule]}
-          items={[
-            { key: 'inventory', label: 'Inventory' },
-            { key: 'events', label: 'Events' },
-            { key: 'boxes', label: 'Boxes' }
-          ]}
-          onClick={(event) => setActiveModule(event.key as 'inventory' | 'events' | 'boxes')}
-        />
+        <Menu mode="inline" selectedKeys={[activeModule]} items={[{ key: 'inventory', label: 'Inventory' }, { key: 'events', label: 'Events' }, { key: 'boxes', label: 'Boxes' }]} onClick={(e) => setActiveModule(e.key as ModuleKey)} />
       </Sider>
       <Layout>
         <Header className="app-header">
-          <div>
-            <Title level={4} style={{ margin: 0 }}>
-              Frontend MVP
-            </Title>
-            <Text type="secondary">
-              {props.userEmail} | {props.userRole}
-            </Text>
-          </div>
+          <div><Title level={4} style={{ margin: 0 }}>Frontend MVP</Title><Text type="secondary">{props.userEmail} | {props.userRole}</Text></div>
           <Button onClick={props.onLogout}>Logout</Button>
         </Header>
         <Content className="app-content">
@@ -228,362 +117,217 @@ function MainShell(props: {
 }
 
 function InventoryModule(): JSX.Element {
-  const queryClient = useQueryClient();
   const ant = AntApp.useApp();
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const params = useMemo(() => buildInventoryParams(search, categoryId), [search, categoryId]);
+  const categoriesQuery = useQuery({ queryKey: ['inventory', 'categories'], queryFn: api.listCategories });
+  const itemsQuery = useQuery({ queryKey: ['inventory', 'items', params.toString()], queryFn: () => api.listItems(params) });
+  const categoryForm = useForm<CreateCategoryForm>({ resolver: zodResolver(createCategorySchema), defaultValues: { name: '', description: '' } });
+  const itemForm = useForm<CreateItemForm>({ resolver: zodResolver(createItemSchema), defaultValues: { name: '', code: '', categoryId: '', quantity: 0, notes: '' } });
 
-  const search = useUiStore((s) => s.search);
-  const setSearch = useUiStore((s) => s.setSearch);
-  const categoryId = useUiStore((s) => s.categoryId);
-  const setCategoryId = useUiStore((s) => s.setCategoryId);
-  const hideUnavailable = useUiStore((s) => s.hideUnavailable);
-  const setHideUnavailable = useUiStore((s) => s.setHideUnavailable);
-  const sortBy = useUiStore((s) => s.sortBy);
-  const setSortBy = useUiStore((s) => s.setSortBy);
-  const sortOrder = useUiStore((s) => s.sortOrder);
-  const setSortOrder = useUiStore((s) => s.setSortOrder);
-
-  const params = useMemo(
-    () =>
-      buildItemsParams({
-        search,
-        categoryId,
-        hideUnavailable,
-        sortBy,
-        sortOrder
-      }),
-    [search, categoryId, hideUnavailable, sortBy, sortOrder]
-  );
-
-  const categoriesQuery = useQuery({
-    queryKey: ['inventory', 'categories'],
-    queryFn: api.listCategories
-  });
-
-  const itemsQuery = useQuery({
-    queryKey: ['inventory', 'items', params.toString()],
-    queryFn: () => api.listItems(params)
-  });
-
-  const categoryForm = useForm<CreateCategoryForm>({
-    resolver: zodResolver(createCategorySchema),
-    defaultValues: {
-      name: '',
-      description: ''
-    }
-  });
-
-  const itemForm = useForm<CreateItemForm>({
-    resolver: zodResolver(createItemSchema),
-    defaultValues: {
-      name: '',
-      code: '',
-      categoryId: '',
-      quantity: 0,
-      notes: ''
-    }
-  });
-
-  const createCategoryMutation = useMutation({
+  const createCategory = useMutation({
     mutationFn: api.createCategory,
-    onSuccess: async () => {
-      categoryForm.reset();
-      await queryClient.invalidateQueries({ queryKey: ['inventory', 'categories'] });
-      ant.message.success('Category created.');
-    },
-    onError: (error) => {
-      const message = error instanceof ApiError ? error.message : 'Unable to create category';
-      ant.message.error(message);
-    }
+    onSuccess: async () => { categoryForm.reset(); await queryClient.invalidateQueries({ queryKey: ['inventory', 'categories'] }); ant.message.success('Category created.'); },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to create category'))
   });
 
-  const createItemMutation = useMutation({
+  const createItem = useMutation({
     mutationFn: api.createItem,
-    onSuccess: async () => {
-      itemForm.reset({
-        name: '',
-        code: '',
-        categoryId: itemForm.getValues('categoryId'),
-        quantity: 0,
-        notes: ''
-      });
-      await queryClient.invalidateQueries({ queryKey: ['inventory', 'items'] });
-      ant.message.success('Item created.');
-    },
-    onError: (error) => {
-      const message = error instanceof ApiError ? error.message : 'Unable to create item';
-      ant.message.error(message);
-    }
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['inventory', 'items'] }); ant.message.success('Item created.'); },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to create item'))
   });
 
-  const categories = categoriesQuery.data?.categories ?? [];
-  const items = itemsQuery.data?.items ?? [];
+  const columns: ColumnsType<Item> = [
+    { title: 'Name', dataIndex: 'name' },
+    { title: 'Code', dataIndex: 'code' },
+    { title: 'Qty', dataIndex: 'quantity' },
+    { title: 'Category', render: (_, row) => row.category?.name ?? '-' },
+    { title: 'Availability', render: (_, row) => (row.isUnavailable ? <Tag color="red">Unavailable</Tag> : <Tag color="green">In stock</Tag>) }
+  ];
 
   return (
     <Space direction="vertical" size="large" className="full-width">
-      <Card
-        title="Inventory Filters"
-        extra={
-          <Button onClick={() => itemsQuery.refetch()} loading={itemsQuery.isRefetching}>
-            Refresh
-          </Button>
-        }
-      >
-        <Row gutter={[12, 12]}>
-          <Col xs={24} md={8}>
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by name or code"
-            />
-          </Col>
-          <Col xs={24} md={5}>
-            <Select
-              value={categoryId}
-              onChange={setCategoryId}
-              options={[
-                { value: '', label: 'All categories' },
-                ...categories.map((category) => ({ value: category.id, label: category.name }))
-              ]}
-              className="full-width"
-            />
-          </Col>
-          <Col xs={12} md={4}>
-            <Select
-              value={sortBy}
-              onChange={setSortBy}
-              options={[
-                { value: 'name', label: 'Sort: Name' },
-                { value: 'code', label: 'Sort: Code' },
-                { value: 'quantity', label: 'Sort: Quantity' },
-                { value: 'updatedAt', label: 'Sort: Updated' }
-              ]}
-              className="full-width"
-            />
-          </Col>
-          <Col xs={12} md={3}>
-            <Select
-              value={sortOrder}
-              onChange={setSortOrder}
-              options={[
-                { value: 'asc', label: 'ASC' },
-                { value: 'desc', label: 'DESC' }
-              ]}
-              className="full-width"
-            />
-          </Col>
-          <Col xs={24} md={4}>
-            <Space>
-              <Switch checked={hideUnavailable} onChange={setHideUnavailable} />
-              <Text>Hide unavailable</Text>
-            </Space>
-          </Col>
-        </Row>
+      <Card title="Filters" extra={<Button onClick={() => itemsQuery.refetch()}>Refresh</Button>}>
+        <Space wrap>
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" style={{ width: 220 }} />
+          <Select value={categoryId} onChange={setCategoryId} style={{ width: 220 }} options={[{ value: '', label: 'All categories' }, ...(categoriesQuery.data?.categories ?? []).map((c) => ({ value: c.id, label: c.name }))]} />
+        </Space>
       </Card>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={10}>
-          <Card title="Create Category">
-            <Form
-              layout="vertical"
-              onFinish={categoryForm.handleSubmit(async (values) => {
-                await createCategoryMutation.mutateAsync({
-                  name: values.name.trim(),
-                  description: values.description?.trim() || undefined
-                });
-              })}
-            >
-              <Form.Item
-                label="Name"
-                validateStatus={categoryForm.formState.errors.name ? 'error' : ''}
-                help={categoryForm.formState.errors.name?.message}
-              >
-                <Input {...categoryForm.register('name')} />
-              </Form.Item>
-              <Form.Item
-                label="Description"
-                validateStatus={categoryForm.formState.errors.description ? 'error' : ''}
-                help={categoryForm.formState.errors.description?.message}
-              >
-                <Input {...categoryForm.register('description')} />
-              </Form.Item>
-              <Button type="primary" htmlType="submit" loading={createCategoryMutation.isPending}>
-                Add Category
-              </Button>
-            </Form>
-          </Card>
-        </Col>
+      <Card title="Create Category">
+        <Form layout="inline" onFinish={categoryForm.handleSubmit(async (values) => createCategory.mutateAsync({ name: values.name.trim(), description: values.description?.trim() || undefined }))}>
+          <Form.Item><Input {...categoryForm.register('name')} placeholder="Name" /></Form.Item>
+          <Form.Item><Input {...categoryForm.register('description')} placeholder="Description" /></Form.Item>
+          <Button type="primary" htmlType="submit" loading={createCategory.isPending}>Add</Button>
+        </Form>
+      </Card>
 
-        <Col xs={24} lg={14}>
-          <Card title="Create Item">
-            <Form
-              layout="vertical"
-              onFinish={itemForm.handleSubmit(async (values) => {
-                await createItemMutation.mutateAsync({
-                  name: values.name.trim(),
-                  code: values.code?.trim() || undefined,
-                  categoryId: values.categoryId,
-                  quantity: values.quantity,
-                  notes: values.notes?.trim() || undefined
-                });
-              })}
-            >
-              <Row gutter={[12, 12]}>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Name"
-                    validateStatus={itemForm.formState.errors.name ? 'error' : ''}
-                    help={itemForm.formState.errors.name?.message}
-                  >
-                    <Input {...itemForm.register('name')} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Code"
-                    validateStatus={itemForm.formState.errors.code ? 'error' : ''}
-                    help={itemForm.formState.errors.code?.message}
-                  >
-                    <Input {...itemForm.register('code')} placeholder="Optional" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Category"
-                    validateStatus={itemForm.formState.errors.categoryId ? 'error' : ''}
-                    help={itemForm.formState.errors.categoryId?.message}
-                  >
-                    <Controller
-                      control={itemForm.control}
-                      name="categoryId"
-                      render={({ field }) => (
-                        <Select
-                          {...field}
-                          value={field.value || undefined}
-                          onChange={field.onChange}
-                          options={categories.map((category) => ({
-                            value: category.id,
-                            label: category.name
-                          }))}
-                          placeholder="Select category"
-                        />
-                      )}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Quantity"
-                    validateStatus={itemForm.formState.errors.quantity ? 'error' : ''}
-                    help={itemForm.formState.errors.quantity?.message}
-                  >
-                    <Controller
-                      control={itemForm.control}
-                      name="quantity"
-                      render={({ field }) => (
-                        <InputNumber
-                          min={0}
-                          className="full-width"
-                          value={field.value}
-                          onChange={(value) => field.onChange(value ?? 0)}
-                        />
-                      )}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24}>
-                  <Form.Item
-                    label="Notes"
-                    validateStatus={itemForm.formState.errors.notes ? 'error' : ''}
-                    help={itemForm.formState.errors.notes?.message}
-                  >
-                    <Input.TextArea rows={3} {...itemForm.register('notes')} />
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Button type="primary" htmlType="submit" loading={createItemMutation.isPending}>
-                Add Item
-              </Button>
-            </Form>
-          </Card>
-        </Col>
-      </Row>
+      <Card title="Create Item">
+        <Form layout="inline" onFinish={itemForm.handleSubmit(async (v) => createItem.mutateAsync({ name: v.name.trim(), code: v.code?.trim() || undefined, categoryId: v.categoryId, quantity: v.quantity, notes: v.notes?.trim() || undefined }))}>
+          <Form.Item><Input {...itemForm.register('name')} placeholder="Name" /></Form.Item>
+          <Form.Item><Input {...itemForm.register('code')} placeholder="Code" /></Form.Item>
+          <Form.Item>
+            <Controller control={itemForm.control} name="categoryId" render={({ field }) => (
+              <Select value={field.value || undefined} onChange={field.onChange} style={{ width: 220 }} placeholder="Category" options={(categoriesQuery.data?.categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+            )} />
+          </Form.Item>
+          <Form.Item><Controller control={itemForm.control} name="quantity" render={({ field }) => <InputNumber value={field.value} min={0} onChange={(n) => field.onChange(n ?? 0)} />} /></Form.Item>
+          <Form.Item><Input {...itemForm.register('notes')} placeholder="Notes" /></Form.Item>
+          <Button type="primary" htmlType="submit" loading={createItem.isPending}>Add</Button>
+        </Form>
+      </Card>
 
       <Card title="Items">
-        {itemsQuery.isError ? (
-          <Alert type="error" message="Failed to load items." showIcon />
-        ) : (
-          <Table<Item>
-            rowKey="id"
-            loading={itemsQuery.isLoading}
-            dataSource={items}
-            pagination={{ pageSize: 12 }}
-            columns={[
-              { title: 'Name', dataIndex: 'name' },
-              { title: 'Code', dataIndex: 'code' },
-              { title: 'Qty', dataIndex: 'quantity', width: 90 },
-              {
-                title: 'Category',
-                render: (_, row) => row.category?.name ?? '-'
-              },
-              {
-                title: 'Availability',
-                render: (_, row) =>
-                  row.isUnavailable ? <Tag color="red">Unavailable</Tag> : <Tag color="green">In stock</Tag>
-              }
-            ]}
-          />
-        )}
+        <Table rowKey="id" loading={itemsQuery.isLoading} dataSource={itemsQuery.data?.items ?? []} columns={columns} pagination={{ pageSize: 12 }} />
       </Card>
     </Space>
   );
 }
 
 function EventsModule(): JSX.Element {
-  const eventsQuery = useQuery({
-    queryKey: ['events', 'list'],
-    queryFn: api.listEvents
+  const ant = AntApp.useApp();
+  const queryClient = useQueryClient();
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const listQuery = useQuery({ queryKey: ['events', 'list'], queryFn: api.listEvents });
+  const detailQuery = useQuery({ queryKey: ['events', 'detail', selectedEventId], queryFn: () => api.getEvent(selectedEventId as string), enabled: Boolean(selectedEventId) });
+  const catalogParams = useMemo(() => { const p = new URLSearchParams(); p.set('layout', 'compact'); p.set('sortBy', 'name'); p.set('sortOrder', 'asc'); return p; }, []);
+  const catalogQuery = useQuery({ queryKey: ['inventory', 'items', 'catalog', catalogParams.toString()], queryFn: () => api.listItems(catalogParams) });
+  const createForm = useForm<CreateEventForm>({ resolver: zodResolver(createEventSchema), defaultValues: { name: '', eventDate: '', location: '', notes: '' } });
+  const addForm = useForm<AddEventItemForm>({ resolver: zodResolver(addEventItemSchema), defaultValues: { itemId: '', plannedQuantity: 1 } });
+
+  const createEvent = useMutation({
+    mutationFn: api.createEvent,
+    onSuccess: async ({ event }) => { await queryClient.invalidateQueries({ queryKey: ['events', 'list'] }); setSelectedEventId(event.id); createForm.reset(); ant.message.success('Event created.'); },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to create event'))
   });
 
+  const lifecycle = useMutation({
+    mutationFn: async (input: { id: string; action: 'activate' | 'close' | 'reopen' }) => input.action === 'activate' ? api.activateEvent(input.id) : input.action === 'close' ? api.closeEvent(input.id) : api.reopenEvent(input.id),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['events', 'list'] }); await queryClient.invalidateQueries({ queryKey: ['events', 'detail', selectedEventId] }); }
+  });
+
+  const addItem = useMutation({
+    mutationFn: (values: AddEventItemForm) => api.addEventItem(selectedEventId as string, values),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['events', 'detail', selectedEventId] }); addForm.reset({ itemId: addForm.getValues('itemId'), plannedQuantity: 1 }); ant.message.success('Item added.'); },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to add event item'))
+  });
+
+  const statusUpdate = useMutation({
+    mutationFn: (input: { eventItemId: string; status: ItemStatus }) => api.updateEventItemStatus(selectedEventId as string, input.eventItemId, { status: input.status, forceToPack: input.status === 'TO_PACK' ? true : undefined }),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['events', 'detail', selectedEventId] }); ant.message.success('Status updated.'); },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to update status'))
+  });
+
+  const eventCols: ColumnsType<EventRow> = [
+    { title: 'Name', dataIndex: 'name' },
+    { title: 'Date', dataIndex: 'eventDate', render: (d: string) => d?.slice(0, 10) ?? '-' },
+    { title: 'Location', dataIndex: 'location' },
+    { title: 'Status', dataIndex: 'lifecycleStatus' },
+    { title: '', render: (_, row) => <Button type={selectedEventId === row.id ? 'primary' : 'default'} onClick={() => setSelectedEventId(row.id)}>Open</Button> }
+  ];
+
   return (
-    <Card title="Events">
-      <Text type="secondary">Read model for MVP. Full event workflows in next iteration.</Text>
-      <Table
-        className="top-gap"
-        rowKey="id"
-        loading={eventsQuery.isLoading}
-        dataSource={eventsQuery.data?.events ?? []}
-        columns={[
-          { title: 'Name', dataIndex: 'name' },
-          { title: 'Date', dataIndex: 'eventDate', render: (value: string) => value?.slice(0, 10) ?? '-' },
-          { title: 'Location', dataIndex: 'location' },
-          { title: 'Status', dataIndex: 'lifecycleStatus' }
-        ]}
-      />
-    </Card>
+    <Space direction="vertical" size="large" className="full-width">
+      <Card title="Create Event">
+        <Form layout="inline" onFinish={createForm.handleSubmit(async (v) => createEvent.mutateAsync({ name: v.name.trim(), eventDate: new Date(`${v.eventDate}T00:00:00`).toISOString(), location: v.location.trim(), notes: v.notes?.trim() || undefined }))}>
+          <Form.Item><Input {...createForm.register('name')} placeholder="Name" /></Form.Item>
+          <Form.Item><Input {...createForm.register('eventDate')} type="date" /></Form.Item>
+          <Form.Item><Input {...createForm.register('location')} placeholder="Location" /></Form.Item>
+          <Form.Item><Input {...createForm.register('notes')} placeholder="Notes" /></Form.Item>
+          <Button type="primary" htmlType="submit" loading={createEvent.isPending}>Add</Button>
+        </Form>
+      </Card>
+
+      <Card title="Events">
+        <Table rowKey="id" dataSource={listQuery.data?.events ?? []} columns={eventCols} loading={listQuery.isLoading} pagination={{ pageSize: 8 }} />
+      </Card>
+
+      {selectedEventId ? (
+        <Card title={`Event Detail ${detailQuery.data?.event?.name ? `- ${detailQuery.data.event.name}` : ''}`} extra={<Space><Button onClick={() => lifecycle.mutate({ id: selectedEventId, action: 'activate' })}>Activate</Button><Button onClick={() => lifecycle.mutate({ id: selectedEventId, action: 'close' })}>Close</Button><Button onClick={() => lifecycle.mutate({ id: selectedEventId, action: 'reopen' })}>Reopen</Button></Space>}>
+          <Space direction="vertical" className="full-width" size="large">
+            <Space wrap>
+              <Tag color="blue">{detailQuery.data?.event?.lifecycleStatus ?? '-'}</Tag>
+              {Object.entries(detailQuery.data?.statusCounts ?? {}).map(([k, v]) => <Tag key={k}>{`${k}:${String(v)}`}</Tag>)}
+            </Space>
+            <Form layout="inline" onFinish={addForm.handleSubmit(async (v) => addItem.mutateAsync(v))}>
+              <Form.Item>
+                <Controller control={addForm.control} name="itemId" render={({ field }) => (
+                  <Select value={field.value || undefined} onChange={field.onChange} style={{ width: 340 }} placeholder="Inventory item" options={(catalogQuery.data?.items ?? []).map((i: Item) => ({ value: i.id, label: `${i.name} (${i.code}) qty:${i.quantity}` }))} />
+                )} />
+              </Form.Item>
+              <Form.Item><Controller control={addForm.control} name="plannedQuantity" render={({ field }) => <InputNumber value={field.value} min={1} onChange={(n) => field.onChange(n ?? 1)} />} /></Form.Item>
+              <Button type="primary" htmlType="submit" loading={addItem.isPending}>Add Item</Button>
+              <Button onClick={() => window.open(`/events/${selectedEventId}/exports/packing-list`, '_blank')}>Packing XLSX</Button>
+              <Button onClick={() => window.open(`/events/${selectedEventId}/exports/post-event-report`, '_blank')}>Report XLSX</Button>
+            </Form>
+            <Table<EventItemRow>
+              rowKey="id"
+              loading={detailQuery.isLoading}
+              dataSource={detailQuery.data?.items ?? []}
+              pagination={{ pageSize: 10 }}
+              columns={[
+                { title: 'Item', render: (_, row) => row.itemName ?? row.itemCode ?? '-' },
+                { title: 'Planned', dataIndex: 'plannedQuantity' },
+                { title: 'Box', dataIndex: 'boxLabel', render: (v: string | null) => v ?? '-' },
+                { title: 'Status', dataIndex: 'status' },
+                {
+                  title: 'Change',
+                  render: (_, row) => <EventStatusEditor initial={row.status} loading={statusUpdate.isPending} onSave={(status) => statusUpdate.mutate({ eventItemId: row.id, status })} />
+                }
+              ]}
+            />
+          </Space>
+        </Card>
+      ) : null}
+    </Space>
+  );
+}
+
+function EventStatusEditor(props: { initial: ItemStatus; loading: boolean; onSave: (status: ItemStatus) => void }): JSX.Element {
+  const [status, setStatus] = useState<ItemStatus>(props.initial);
+  return (
+    <Space>
+      <Select value={status} onChange={setStatus} style={{ width: 130 }} options={[{ value: 'TO_PACK', label: 'TO_PACK' }, { value: 'PACKED', label: 'PACKED' }, { value: 'RETURNED', label: 'RETURNED' }, { value: 'LOSS', label: 'LOSS' }]} />
+      <Button size="small" onClick={() => props.onSave(status)} loading={props.loading}>Save</Button>
+    </Space>
   );
 }
 
 function BoxesModule(): JSX.Element {
-  const boxesQuery = useQuery({
-    queryKey: ['boxes', 'list'],
-    queryFn: api.listBoxes
+  const ant = AntApp.useApp();
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const params = useMemo(() => { const p = new URLSearchParams(); p.set('sortBy', 'boxCode'); p.set('sortOrder', 'asc'); if (search.trim()) p.set('search', search.trim()); return p; }, [search]);
+  const listQuery = useQuery({ queryKey: ['boxes', 'list', params.toString()], queryFn: () => api.listBoxes(params) });
+  const form = useForm<CreateBoxForm>({ resolver: zodResolver(createBoxSchema), defaultValues: { boxCode: '', name: '', notes: '' } });
+
+  const create = useMutation({
+    mutationFn: api.createBox,
+    onSuccess: async () => { form.reset(); await queryClient.invalidateQueries({ queryKey: ['boxes', 'list'] }); ant.message.success('Box created.'); },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to create box'))
   });
 
+  const cols: ColumnsType<BoxRow> = [
+    { title: 'Code', dataIndex: 'boxCode' },
+    { title: 'Name', dataIndex: 'name' },
+    { title: 'Notes', dataIndex: 'notes', render: (v: string | null | undefined) => v ?? '-' }
+  ];
+
   return (
-    <Card title="Boxes">
-      <Text type="secondary">Read model for MVP. Box assignment and QR actions in next iteration.</Text>
-      <Table
-        className="top-gap"
-        rowKey="id"
-        loading={boxesQuery.isLoading}
-        dataSource={boxesQuery.data?.boxes ?? []}
-        columns={[
-          { title: 'Code', dataIndex: 'boxCode' },
-          { title: 'Name', dataIndex: 'name' },
-          { title: 'Notes', dataIndex: 'notes', render: (value: string | null | undefined) => value ?? '-' }
-        ]}
-      />
-    </Card>
+    <Space direction="vertical" size="large" className="full-width">
+      <Card title="Create Box">
+        <Form layout="inline" onFinish={form.handleSubmit(async (v) => create.mutateAsync({ boxCode: v.boxCode.trim().toUpperCase(), name: v.name.trim(), notes: v.notes?.trim() || undefined }))}>
+          <Form.Item><Input {...form.register('boxCode')} placeholder="Box code" /></Form.Item>
+          <Form.Item><Input {...form.register('name')} placeholder="Name" /></Form.Item>
+          <Form.Item><Input {...form.register('notes')} placeholder="Notes" /></Form.Item>
+          <Button type="primary" htmlType="submit" loading={create.isPending}>Add</Button>
+        </Form>
+      </Card>
+      <Card title="Boxes" extra={<Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" style={{ width: 220 }} />}>
+        <Table rowKey="id" loading={listQuery.isLoading} dataSource={listQuery.data?.boxes ?? []} columns={cols} pagination={{ pageSize: 12 }} />
+      </Card>
+    </Space>
   );
 }

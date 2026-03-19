@@ -41,3 +41,28 @@ export type BoxRow = {
   name: string;
   notes?: string | null;
 };
+
+export type EventDetail = {
+  id: string;
+  name: string;
+  eventDate: string;
+  location: string;
+  notes?: string | null;
+  lifecycleStatus: string;
+  statusCounts: Record<string, number>;
+};
+
+export type EventItemRow = {
+  id: string;
+  eventId: string;
+  itemId: string;
+  itemName: string | null;
+  itemCode: string | null;
+  plannedQuantity: number;
+  lostQuantity: number;
+  returnedQuantity: number;
+  status: 'TO_PACK' | 'PACKED' | 'RETURNED' | 'LOSS';
+  statusLabel: string;
+  boxCode: string | null;
+  boxLabel: string | null;
+};

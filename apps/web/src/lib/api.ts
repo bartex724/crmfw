@@ -1,4 +1,4 @@
-import type { AuthUser, BoxRow, Category, EventRow, Item } from './types';
+import type { AuthUser, BoxRow, Category, EventDetail, EventItemRow, EventRow, Item } from './types';
 
 const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
 
@@ -73,5 +73,50 @@ export const api = {
       body: JSON.stringify(input)
     }),
   listEvents: () => request<{ events: EventRow[] }>('/events'),
-  listBoxes: () => request<{ boxes: BoxRow[] }>('/boxes')
+  getEvent: (id: string) =>
+    request<{ event: EventDetail; items: EventItemRow[]; statusCounts: Record<string, number> }>(
+      `/events/${id}`
+    ),
+  createEvent: (input: { name: string; eventDate: string; location: string; notes?: string }) =>
+    request<{ event: EventRow }>('/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input)
+    }),
+  activateEvent: (id: string) =>
+    request<{ event: EventRow }>(`/events/${id}/activate`, {
+      method: 'POST'
+    }),
+  closeEvent: (id: string) =>
+    request<{ event: EventRow }>(`/events/${id}/close`, {
+      method: 'POST'
+    }),
+  reopenEvent: (id: string) =>
+    request<{ event: EventRow }>(`/events/${id}/reopen`, {
+      method: 'POST'
+    }),
+  addEventItem: (eventId: string, input: { itemId: string; plannedQuantity: number }) =>
+    request<{ item: EventItemRow }>(`/events/${eventId}/items`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input)
+    }),
+  updateEventItemStatus: (
+    eventId: string,
+    eventItemId: string,
+    input: { status: 'TO_PACK' | 'PACKED' | 'RETURNED' | 'LOSS'; forceToPack?: boolean }
+  ) =>
+    request<{ item: EventItemRow }>(`/events/${eventId}/items/${eventItemId}/status`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input)
+    }),
+  listBoxes: (params?: URLSearchParams) =>
+    request<{ boxes: BoxRow[] }>(params ? `/boxes?${params.toString()}` : '/boxes'),
+  createBox: (input: { boxCode: string; name: string; notes?: string }) =>
+    request<{ box: BoxRow }>('/boxes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input)
+    })
 };
