@@ -17,6 +17,7 @@ import { RequirePermissions } from '../access/require-permissions.decorator';
 import { SessionAuthGuard } from '../auth/auth.service';
 import { BoxesService } from './boxes.service';
 import { AssignBoxItemsDto } from './dto/assign-box-items.dto';
+import { BoxEventContextQueryDto } from './dto/box-event-context-query.dto';
 import { CreateBoxDto } from './dto/create-box.dto';
 import { ListBoxesQueryDto } from './dto/list-boxes-query.dto';
 import { UpdateBoxDto } from './dto/update-box.dto';
@@ -44,6 +45,23 @@ export class BoxesController {
   async getBoxQr(@Param('boxCode') boxCode: string): Promise<{ box: unknown }> {
     const box = await this.boxesService.getBoxQr(boxCode);
     return { box };
+  }
+
+  @Get(':boxCode/scan')
+  @RequirePermissions(PERMISSIONS.BOXES_READ)
+  async resolveScanEntry(@Param('boxCode') boxCode: string): Promise<{ scan: unknown }> {
+    const scan = await this.boxesService.resolveScanEntry(boxCode);
+    return { scan };
+  }
+
+  @Get(':boxCode/context')
+  @RequirePermissions(PERMISSIONS.BOXES_READ)
+  async getBoxEventContext(
+    @Param('boxCode') boxCode: string,
+    @Query() query: BoxEventContextQueryDto
+  ): Promise<{ context: unknown }> {
+    const context = await this.boxesService.getBoxEventContext(boxCode, query.eventId);
+    return { context };
   }
 
   @Get(':boxId')

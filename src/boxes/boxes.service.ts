@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { EventLifecycleStatus, type Prisma } from '@prisma/client';
 import * as QRCode from 'qrcode';
 import { AuditService } from '../audit/audit.service';
 import { APP_CONFIG } from '../config/config.module';
@@ -116,6 +116,212 @@ export class BoxesService {
       boxCode: box.boxCode,
       payloadUrl,
       qrDataUrl
+    };
+  }
+
+  async resolveScanEntry(boxCode: string): Promise<Record<string, unknown>> {
+    const box = await this.findBoxByCode(boxCode);
+    const activeLinks = (await this.prisma.eventBox.findMany({
+      where: {
+        boxId: box.id,
+        event: {
+          lifecycleStatus: EventLifecycleStatus.ACTIVE
+        }
+      },
+      include: {
+        event: {
+          select: {
+            id: true,
+            name: true,
+            eventDate: true,
+            location: true
+          }
+        }
+      }
+    })) as Array<{
+      event: {
+        id: string;
+        name: string;
+        eventDate: Date;
+        location: string;
+      };
+    }>;
+
+    const latestActiveEvent =
+      activeLinks
+        .map((entry) => entry.event)
+        .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime())[0] ?? null;
+
+    return {
+      box: this.toBoxResponse(box),
+      openUrl: `/boxes/${box.id}`,
+      hasActiveEvent: latestActiveEvent !== null,
+      activeEvent: latestActiveEvent,
+      warningCode: latestActiveEvent ? null : 'BOX_NOT_IN_ACTIVE_EVENT',
+      quickAction: latestActiveEvent
+        ? null
+        : {
+            type: 'ADD_TO_EVENT',
+            method: 'POST',
+            endpointTemplate: `/events/:eventId/boxes/${box.id}/add`
+          }
+    };
+  }
+
+  async getBoxEventContext(boxCode: string, eventId?: string): Promise<Record<string, unknown>> {
+    const box = await this.findBoxByCode(boxCode);
+    const activeLinks = (await this.prisma.eventBox.findMany({
+      where: {
+        boxId: box.id,
+        event: {
+          lifecycleStatus: EventLifecycleStatus.ACTIVE
+        }
+      },
+      include: {
+        event: {
+          select: {
+            id: true,
+            name: true,
+            eventDate: true,
+            location: true,
+            lifecycleStatus: true
+          }
+        }
+      }
+    })) as Array<{
+      event: {
+        id: string;
+        name: string;
+        eventDate: Date;
+        location: string;
+        lifecycleStatus: EventLifecycleStatus;
+      };
+    }>;
+
+    const activeEvents = activeLinks
+      .map((entry) => entry.event)
+      .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime())
+      .map((event) => ({
+        id: event.id,
+        name: event.name,
+        eventDate: event.eventDate,
+        location: event.location,
+        lifecycleStatus: event.lifecycleStatus
+      }));
+
+    if (!eventId) {
+      return {
+        box: this.toBoxResponse(box),
+        activeEvents,
+        selectedEventId: null,
+        requiresEventSelection: true,
+        warningCode: activeEvents.length > 0 ? null : 'BOX_NOT_IN_ACTIVE_EVENT',
+        quickAction:
+          activeEvents.length > 0
+            ? null
+            : {
+                type: 'ADD_TO_EVENT',
+                method: 'POST',
+                endpointTemplate: `/events/:eventId/boxes/${box.id}/add`
+              },
+        actions: null,
+        items: []
+      };
+    }
+
+    const selectedActiveEvent = activeEvents.find((event) => event.id === eventId);
+    if (!selectedActiveEvent) {
+      throw new BadRequestException('Selected event is not active for this box');
+    }
+
+    const linkedRows = (await this.prisma.eventItemBox.findMany({
+      where: {
+        boxId: box.id,
+        eventItem: {
+          eventId
+        }
+      },
+      include: {
+        eventItem: {
+          include: {
+            item: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                quantity: true
+              }
+            },
+            eventItemBoxes: {
+              include: {
+                box: {
+                  select: {
+                    boxCode: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    })) as Array<{
+      eventItem: {
+        id: string;
+        eventId: string;
+        itemId: string;
+        plannedQuantity: number;
+        status: string;
+        createdAt: Date;
+        updatedAt: Date;
+        item?: {
+          id: string;
+          name: string;
+          code: string;
+          quantity: number;
+        } | null;
+        eventItemBoxes: Array<{
+          createdAt: Date;
+          box: {
+            boxCode: string;
+          };
+        }>;
+      };
+    }>;
+
+    const items = linkedRows
+      .map((entry) => entry.eventItem)
+      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+      .map((eventItem) => {
+        const boxMarker = this.formatBoxMarker(eventItem.eventItemBoxes);
+        return {
+          id: eventItem.id,
+          eventId: eventItem.eventId,
+          itemId: eventItem.itemId,
+          itemName: eventItem.item?.name ?? null,
+          itemCode: eventItem.item?.code ?? null,
+          plannedQuantity: eventItem.plannedQuantity,
+          status: eventItem.status,
+          boxCode: boxMarker,
+          boxLabel: boxMarker ?? 'No box',
+          boxWarning: boxMarker ? null : 'NO_BOX_LINK',
+          createdAt: eventItem.createdAt,
+          updatedAt: eventItem.updatedAt
+        };
+      });
+
+    return {
+      box: this.toBoxResponse(box),
+      activeEvents,
+      selectedEventId: eventId,
+      requiresEventSelection: true,
+      warningCode: null,
+      quickAction: null,
+      actions: {
+        updateItemStatus: `/events/${eventId}/items/:eventItemId/status`,
+        bulkUpdateItemStatus: `/events/${eventId}/items/status/bulk`,
+        addMissingItems: `/events/${eventId}/boxes/${box.id}/add-missing`
+      },
+      items
     };
   }
 
@@ -353,6 +559,35 @@ export class BoxesService {
     return normalized.length > 0 ? normalized : null;
   }
 
+  private formatBoxMarker(
+    links: Array<{
+      createdAt: Date;
+      box: {
+        boxCode: string;
+      };
+    }>
+  ): string | null {
+    if (links.length === 0) {
+      return null;
+    }
+
+    const ordered = [...links].sort((left, right) => {
+      const createdAtDiff = left.createdAt.getTime() - right.createdAt.getTime();
+      if (createdAtDiff !== 0) {
+        return createdAtDiff;
+      }
+
+      return left.box.boxCode.localeCompare(right.box.boxCode);
+    });
+
+    const first = ordered[0]?.box.boxCode ?? null;
+    if (!first) {
+      return null;
+    }
+
+    return ordered.length > 1 ? `${first} +${ordered.length - 1}` : first;
+  }
+
   private async ensureUniqueBoxCode(boxCode: string, excludeBoxId: string | null): Promise<void> {
     const duplicate = await this.prisma.box.findFirst({
       where: {
@@ -382,5 +617,23 @@ export class BoxesService {
       createdAt: box.createdAt,
       updatedAt: box.updatedAt
     };
+  }
+
+  private async findBoxByCode(boxCode: string): Promise<BoxWithTimestamps> {
+    const normalizedCode = this.normalizeCode(boxCode);
+    const box = await this.prisma.box.findFirst({
+      where: {
+        boxCode: {
+          equals: normalizedCode,
+          mode: 'insensitive'
+        }
+      }
+    });
+
+    if (!box) {
+      throw new NotFoundException('Box not found');
+    }
+
+    return box as BoxWithTimestamps;
   }
 }
