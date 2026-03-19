@@ -1,11 +1,15 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import * as QRCode from 'qrcode';
 import { AuditService } from '../audit/audit.service';
+import { APP_CONFIG } from '../config/config.module';
+import { type AppConfig, buildConfiguration } from '../config/configuration';
 import { PrismaService } from '../database/prisma.service';
 import { AssignBoxItemsDto } from './dto/assign-box-items.dto';
 import { CreateBoxDto } from './dto/create-box.dto';
@@ -25,7 +29,8 @@ type BoxWithTimestamps = {
 export class BoxesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    @Inject(APP_CONFIG) private readonly config?: AppConfig
   ) {}
 
   async listBoxes(query: ListBoxesQueryDto = {}): Promise<Array<Record<string, unknown>>> {
@@ -80,6 +85,38 @@ export class BoxesService {
     }
 
     return this.toBoxResponse(box as BoxWithTimestamps);
+  }
+
+  async getBoxQr(boxCode: string): Promise<{
+    boxId: string;
+    boxCode: string;
+    payloadUrl: string;
+    qrDataUrl: string;
+  }> {
+    const normalizedCode = this.normalizeCode(boxCode);
+    const box = await this.prisma.box.findFirst({
+      where: {
+        boxCode: {
+          equals: normalizedCode,
+          mode: 'insensitive'
+        }
+      }
+    });
+
+    if (!box) {
+      throw new NotFoundException('Box not found');
+    }
+
+    const publicBaseUrl = this.config?.publicBaseUrl ?? buildConfiguration(process.env).publicBaseUrl;
+    const payloadUrl = `${publicBaseUrl}/boxes/${box.boxCode}/scan`;
+    const qrDataUrl = await QRCode.toDataURL(payloadUrl);
+
+    return {
+      boxId: box.id,
+      boxCode: box.boxCode,
+      payloadUrl,
+      qrDataUrl
+    };
   }
 
   async createBox(dto: CreateBoxDto, actorUserId: string | null): Promise<Record<string, unknown>> {

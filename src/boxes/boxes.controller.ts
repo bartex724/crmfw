@@ -39,6 +39,13 @@ export class BoxesController {
     return { boxes };
   }
 
+  @Get(':boxCode/qr')
+  @RequirePermissions(PERMISSIONS.BOXES_READ)
+  async getBoxQr(@Param('boxCode') boxCode: string): Promise<{ box: unknown }> {
+    const box = await this.boxesService.getBoxQr(boxCode);
+    return { box };
+  }
+
   @Get(':boxId')
   @RequirePermissions(PERMISSIONS.BOXES_READ)
   async getBox(@Param('boxId') boxId: string): Promise<{ box: unknown }> {
