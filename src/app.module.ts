@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { AccessModule } from './access/access.module';
+import { AppController } from './app.controller';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { BoxesModule } from './boxes/boxes.module';
@@ -14,6 +15,7 @@ import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
+  controllers: [AppController],
   imports: [
     AppConfigModule,
     DatabaseModule,
