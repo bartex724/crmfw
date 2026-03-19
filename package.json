@@ -4,12 +4,12 @@
   "description": "Warehouse Event Packing System backend",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "npm run prisma:generate && tsc -p tsconfig.build.json",
     "start": "node dist/src/main.js",
     "start:dev": "ts-node -r tsconfig-paths/register src/main.ts",
     "test": "jest --config ./jest.config.ts --runInBand",
     "test:e2e": "jest --config ./jest.config.ts --runInBand",
-    "prisma:generate": "prisma generate",
+    "prisma:generate": "node -e \"const { execSync } = require('node:child_process'); if (!process.env.DATABASE_URL) { process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/crm?schema=public'; } execSync('npx prisma generate', { stdio: 'inherit' });\"",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy"
   },
