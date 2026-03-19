@@ -1,3 +1,4 @@
+import * as argon2 from 'argon2';
 import { PrismaClient, RoleCode } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -169,9 +170,69 @@ async function seedRoles(permissionMap: Record<string, string>): Promise<void> {
   }
 }
 
+function readSeedAdminCredentials(): { email: string; password: string } | null {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const envEmail = process.env.ADMIN_SEED_EMAIL?.trim().toLowerCase();
+  const envPassword = process.env.ADMIN_SEED_PASSWORD?.trim();
+
+  if (envEmail && envPassword) {
+    return { email: envEmail, password: envPassword };
+  }
+
+  if (isProduction) {
+    return null;
+  }
+
+  return {
+    email: 'admin@example.com',
+    password: 'AdminPass123!'
+  };
+}
+
+async function seedAdminUser(): Promise<void> {
+  const credentials = readSeedAdminCredentials();
+
+  if (!credentials) {
+    console.warn(
+      'Skipping admin user seed in production. Set ADMIN_SEED_EMAIL and ADMIN_SEED_PASSWORD to enable.'
+    );
+    return;
+  }
+
+  const adminRole = await prisma.role.findUnique({
+    where: {
+      code: RoleCode.ADMIN
+    }
+  });
+
+  if (!adminRole) {
+    throw new Error('Missing ADMIN role. Seed roles before users.');
+  }
+
+  const passwordHash = await argon2.hash(credentials.password);
+
+  await prisma.user.upsert({
+    where: {
+      email: credentials.email
+    },
+    update: {
+      passwordHash,
+      roleId: adminRole.id,
+      isActive: true
+    },
+    create: {
+      email: credentials.email,
+      passwordHash,
+      roleId: adminRole.id,
+      isActive: true
+    }
+  });
+}
+
 async function main(): Promise<void> {
   const permissionMap = await seedPermissions();
   await seedRoles(permissionMap);
+  await seedAdminUser();
 }
 
 main()
