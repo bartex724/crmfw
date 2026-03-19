@@ -6,17 +6,19 @@ import { PrismaClient } from '@prisma/client';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
     const connectionString = process.env.DATABASE_URL;
-
-    if (!connectionString) {
-      throw new Error('DATABASE_URL is required to initialize PrismaService.');
+    if (connectionString) {
+      const adapter = new PrismaPg({ connectionString });
+      super({ adapter });
+      return;
     }
 
-    const adapter = new PrismaPg({ connectionString });
-    super({ adapter });
+    // Allow app bootstrap in environments where DATABASE_URL is injected later.
+    super();
   }
 
   async onModuleInit(): Promise<void> {
-    await this.$connect();
+    // In serverless environments, eager connect can fail cold-starts.
+    // Prisma will connect lazily on first query.
   }
 
   async onModuleDestroy(): Promise<void> {
