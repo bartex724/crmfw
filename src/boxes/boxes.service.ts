@@ -7,6 +7,7 @@ import {
 import type { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../database/prisma.service';
+import { AssignBoxItemsDto } from './dto/assign-box-items.dto';
 import { CreateBoxDto } from './dto/create-box.dto';
 import { type BoxSortField, type BoxSortOrder, ListBoxesQueryDto } from './dto/list-boxes-query.dto';
 import { UpdateBoxDto } from './dto/update-box.dto';
@@ -184,6 +185,83 @@ export class BoxesService {
     return {
       deleted: true,
       id: boxId
+    };
+  }
+
+  async assignBoxItems(
+    boxId: string,
+    dto: AssignBoxItemsDto,
+    actorUserId: string | null
+  ): Promise<Record<string, unknown>> {
+    const box = await this.prisma.box.findUnique({
+      where: {
+        id: boxId
+      }
+    });
+
+    if (!box) {
+      throw new NotFoundException('Box not found');
+    }
+
+    const itemIds = dto.itemIds.map((value) => value.trim());
+    const uniqueItemIds = new Set(itemIds);
+    if (uniqueItemIds.size !== itemIds.length) {
+      throw new BadRequestException('Duplicate itemIds are not allowed');
+    }
+
+    if (itemIds.length > 0) {
+      const inventoryItems = await this.prisma.item.findMany({
+        where: {
+          id: {
+            in: itemIds
+          }
+        },
+        select: {
+          id: true
+        }
+      });
+
+      const existingItemIds = new Set(inventoryItems.map((item) => item.id));
+      const unknownItemIds = itemIds.filter((itemId) => !existingItemIds.has(itemId));
+      if (unknownItemIds.length > 0) {
+        throw new BadRequestException(
+          `Unknown inventory item IDs: ${unknownItemIds.join(', ')}`
+        );
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.boxItem.deleteMany({
+        where: {
+          boxId
+        }
+      });
+
+      if (itemIds.length > 0) {
+        await tx.boxItem.createMany({
+          data: itemIds.map((itemId) => ({
+            boxId,
+            itemId
+          }))
+        });
+      }
+    });
+
+    await this.auditService.record({
+      action: 'box.items.assigned',
+      entityType: 'box',
+      entityId: boxId,
+      actorUserId,
+      metadata: {
+        boxCode: box.boxCode,
+        itemIds
+      }
+    });
+
+    return {
+      boxId,
+      boxCode: box.boxCode,
+      itemIds
     };
   }
 

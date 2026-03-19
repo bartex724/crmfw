@@ -1,9 +1,22 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards
+} from '@nestjs/common';
 import { PERMISSIONS } from '../access/permissions';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { RequirePermissions } from '../access/require-permissions.decorator';
 import { SessionAuthGuard } from '../auth/auth.service';
 import { BoxesService } from './boxes.service';
+import { AssignBoxItemsDto } from './dto/assign-box-items.dto';
 import { CreateBoxDto } from './dto/create-box.dto';
 import { ListBoxesQueryDto } from './dto/list-boxes-query.dto';
 import { UpdateBoxDto } from './dto/update-box.dto';
@@ -52,6 +65,17 @@ export class BoxesController {
   ): Promise<{ box: unknown }> {
     const box = await this.boxesService.updateBox(boxId, body, request.user?.id ?? null);
     return { box };
+  }
+
+  @Put(':boxId/items')
+  @RequirePermissions(PERMISSIONS.BOXES_WRITE)
+  async assignBoxItems(
+    @Param('boxId') boxId: string,
+    @Body() body: AssignBoxItemsDto,
+    @Req() request: AuthenticatedRequest
+  ): Promise<{ assignment: unknown }> {
+    const assignment = await this.boxesService.assignBoxItems(boxId, body, request.user?.id ?? null);
+    return { assignment };
   }
 
   @Delete(':boxId')
