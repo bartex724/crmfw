@@ -6,6 +6,7 @@ import { AuthService, SessionAuthGuard } from '../../src/auth/auth.service';
 import { AuditService } from '../../src/audit/audit.service';
 import { BoxesController } from '../../src/boxes/boxes.controller';
 import { BoxesService } from '../../src/boxes/boxes.service';
+import { APP_CONFIG } from '../../src/config/config.module';
 import { PrismaService } from '../../src/database/prisma.service';
 
 type BoxRecord = {
@@ -191,6 +192,12 @@ describe('Box item assignment', () => {
           provide: AuthService,
           useValue: {
             getAuthenticatedUserFromToken: jest.fn()
+          }
+        },
+        {
+          provide: APP_CONFIG,
+          useValue: {
+            publicBaseUrl: 'https://app.example.test'
           }
         }
       ]
