@@ -1,4 +1,12 @@
+import type { INestApplication } from '@nestjs/common';
+import { Test, type TestingModule } from '@nestjs/testing';
+import request = require('supertest');
+import { AccessModule } from '../../src/access/access.module';
+import { AuthService, SessionAuthGuard } from '../../src/auth/auth.service';
+import { AuditService } from '../../src/audit/audit.service';
+import { BoxesController } from '../../src/boxes/boxes.controller';
 import { BoxesService } from '../../src/boxes/boxes.service';
+import { PrismaService } from '../../src/database/prisma.service';
 
 type BoxRecord = {
   id: string;
@@ -183,5 +191,155 @@ describe('Box management', () => {
         'user-1'
       )
     ).rejects.toThrow('Duplicate box code');
+  });
+
+  describe('boxes API permissions and conflict boundaries', () => {
+    let app: INestApplication;
+    const previousNodeEnv = process.env.NODE_ENV;
+
+    beforeAll(() => {
+      process.env.NODE_ENV = 'test';
+    });
+
+    afterAll(() => {
+      process.env.NODE_ENV = previousNodeEnv;
+    });
+
+    beforeEach(async () => {
+      const harness = createBoxesHarness();
+      const auditService = { record: jest.fn(async () => undefined) };
+
+      const moduleFixture: TestingModule = await Test.createTestingModule({
+        imports: [AccessModule],
+        controllers: [BoxesController],
+        providers: [
+          SessionAuthGuard,
+          BoxesService,
+          {
+            provide: PrismaService,
+            useValue: harness.prisma
+          },
+          {
+            provide: AuditService,
+            useValue: auditService
+          },
+          {
+            provide: AuthService,
+            useValue: {
+              getAuthenticatedUserFromToken: jest.fn()
+            }
+          }
+        ]
+      }).compile();
+
+      app = moduleFixture.createNestApplication();
+      await app.init();
+    });
+
+    afterEach(async () => {
+      await app.close();
+    });
+
+    it('allows admin and warehouse staff to execute CRUD lifecycle', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/boxes')
+        .set({ 'x-test-role': 'ADMIN' })
+        .send({
+          boxCode: 'BX-500',
+          name: 'Lighting'
+        })
+        .expect(201);
+
+      const boxId = String(created.body.box.id);
+
+      await request(app.getHttpServer())
+        .get('/boxes')
+        .set({ 'x-test-role': 'WAREHOUSE_STAFF' })
+        .expect(200)
+        .expect((response) => {
+          expect(Array.isArray(response.body.boxes)).toBe(true);
+          expect(response.body.boxes).toHaveLength(1);
+        });
+
+      await request(app.getHttpServer())
+        .patch(`/boxes/${boxId}`)
+        .set({ 'x-test-role': 'WAREHOUSE_STAFF' })
+        .send({
+          notes: 'Main stage'
+        })
+        .expect(200)
+        .expect((response) => {
+          expect(response.body.box.notes).toBe('Main stage');
+        });
+
+      await request(app.getHttpServer())
+        .delete(`/boxes/${boxId}`)
+        .set({ 'x-test-role': 'ADMIN' })
+        .expect(200)
+        .expect((response) => {
+          expect(response.body).toEqual({
+            deleted: true,
+            id: boxId
+          });
+        });
+    });
+
+    it('forbids user without boxes:write', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/boxes')
+        .set({ 'x-test-role': 'ADMIN' })
+        .send({
+          boxCode: 'BX-700',
+          name: 'Audio'
+        })
+        .expect(201);
+
+      const boxId = String(created.body.box.id);
+
+      await request(app.getHttpServer())
+        .post('/boxes')
+        .set({ 'x-test-role': 'OFFICE_STAFF' })
+        .send({
+          boxCode: 'BX-701',
+          name: 'Should fail'
+        })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .patch(`/boxes/${boxId}`)
+        .set({ 'x-test-role': 'OFFICE_STAFF' })
+        .send({
+          name: 'Should fail'
+        })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .delete(`/boxes/${boxId}`)
+        .set({ 'x-test-role': 'GUEST' })
+        .expect(403);
+    });
+
+    it('rejects duplicate boxCode', async () => {
+      await request(app.getHttpServer())
+        .post('/boxes')
+        .set({ 'x-test-role': 'ADMIN' })
+        .send({
+          boxCode: 'BX-900',
+          name: 'Primary'
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/boxes')
+        .set({ 'x-test-role': 'WAREHOUSE_STAFF' })
+        .send({
+          boxCode: 'bx-900',
+          name: 'Duplicate'
+        })
+        .expect(409)
+        .expect((response) => {
+          expect(response.body.message).toContain('Duplicate box code');
+        });
+    });
   });
 });
