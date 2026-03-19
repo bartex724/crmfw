@@ -28,6 +28,11 @@ const eventsServiceMock = {
   addEventItem: jest.fn(async () => ({ id: 'evt-item-1', plannedQuantity: 2 })),
   removeEventItem: jest.fn(async () => ({ deleted: true, id: 'evt-item-1', eventId: 'evt-1' })),
   updateItemStatus: jest.fn(async () => ({ id: 'evt-item-1', status: 'PACKED' })),
+  updateItemReconciliation: jest.fn(async () => ({
+    id: 'evt-item-1',
+    lostQuantity: 1,
+    returnedQuantity: 0
+  })),
   bulkUpdateItemStatus: jest.fn(async () => [{ id: 'evt-item-1', status: 'PACKED' }])
 };
 
@@ -118,6 +123,56 @@ describe('Event role access', () => {
       .post('/events')
       .set({ 'x-test-role': 'GUEST' })
       .send({ name: 'Expo', eventDate: '2026-04-02T10:00:00.000Z', location: 'Hall A' })
+      .expect(403);
+  });
+
+  it('allows warehouse and office staff export access', async () => {
+    await request(app.getHttpServer())
+      .get('/events/evt-1/exports/packing-list')
+      .set({ 'x-test-role': 'WAREHOUSE_STAFF' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get('/events/evt-1/exports/post-event-report')
+      .set({ 'x-test-role': 'OFFICE_STAFF' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get('/events/evt-1/exports/packing-list')
+      .set({ 'x-test-role': 'GUEST' })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get('/events/evt-1/exports/post-event-report')
+      .set({ 'x-test-role': 'GUEST' })
+      .expect(403);
+  });
+
+  it('requires events:write on /reconciliation endpoint', async () => {
+    const payload = { lostQuantity: 1, returnedQuantity: 0 };
+
+    await request(app.getHttpServer())
+      .patch('/events/evt-1/items/evt-item-1/reconciliation')
+      .set({ 'x-test-role': 'ADMIN' })
+      .send(payload)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .patch('/events/evt-1/items/evt-item-1/reconciliation')
+      .set({ 'x-test-role': 'WAREHOUSE_STAFF' })
+      .send(payload)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .patch('/events/evt-1/items/evt-item-1/reconciliation')
+      .set({ 'x-test-role': 'OFFICE_STAFF' })
+      .send(payload)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .patch('/events/evt-1/items/evt-item-1/reconciliation')
+      .set({ 'x-test-role': 'GUEST' })
+      .send(payload)
       .expect(403);
   });
 
