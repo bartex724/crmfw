@@ -7,12 +7,12 @@ import { AuditService } from '../../src/audit/audit.service';
 import { PrismaService } from '../../src/database/prisma.service';
 import { EventsController } from '../../src/events/events.controller';
 import { EventsService } from '../../src/events/events.service';
-import { createEventsHarness } from './fixtures/events-harness';
+import { createEventBoxExpansionHarness } from './fixtures/event-box-expansion-harness';
 
 describe('Event box expansion', () => {
   let app: INestApplication;
   let eventsService: EventsService;
-  let harness: ReturnType<typeof createEventsHarness>;
+  let harness: ReturnType<typeof createEventBoxExpansionHarness>;
   const previousNodeEnv = process.env.NODE_ENV;
 
   beforeAll(() => {
@@ -24,7 +24,7 @@ describe('Event box expansion', () => {
   });
 
   beforeEach(async () => {
-    harness = createEventsHarness();
+    harness = createEventBoxExpansionHarness();
     const auditService = { record: jest.fn(async () => undefined) };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -155,7 +155,7 @@ describe('Event box expansion', () => {
       .set({ 'x-test-role': 'ADMIN' })
       .expect(201);
 
-    ((harness as unknown as { boxItems?: Array<Record<string, unknown>> }).boxItems ?? []).push({
+    harness.boxItems.push({
       boxId: 'box-1',
       itemId: harness.items[2].id,
       createdAt: new Date()
