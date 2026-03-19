@@ -101,7 +101,7 @@ Plans:
 
 Plans:
 - [x] 05-01-PLAN.md - Implement event-item reconciliation quantities with delta-based stock correction and audit trail
-- [ ] 05-02-PLAN.md - Build deterministic packing/post-event XLSX exports and align export-access permissions
+- [x] 05-02-PLAN.md - Build deterministic packing/post-event XLSX exports and align export-access permissions
 - [ ] 05-03-PLAN.md - Add cross-flow reconciliation/export hardening and phase release-gate regressions
 
 ## Progress
@@ -115,4 +115,4 @@ Phases execute in numeric order: 2 -> 2.1 -> 2.2 -> 3 -> 3.1 -> 4
 | 2. Inventory Catalog and Media | 3/3 | Complete    | 2026-03-19 |
 | 3. Event Packing Workflow | 2/2 | Complete    | 2026-03-19 |
 | 4. Box Automation and QR Flow | 4/4 | Complete   | 2026-03-19 |
-| 5. Reconciliation and Excel Exports | 1/3 | In Progress | - |
+| 5. Reconciliation and Excel Exports | 2/3 | In Progress | - |

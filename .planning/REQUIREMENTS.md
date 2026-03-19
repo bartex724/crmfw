@@ -52,9 +52,9 @@
 
 ### Exports
 
-- [ ] **XLS-01**: User can export event Packing List Excel with columns Name, Quantity, Box, Notes
-- [ ] **XLS-02**: User can export event Post-event Report Excel with columns Name, Quantity, Loss, Box, Notes
-- [ ] **XLS-03**: Exported files reflect current event values at export time
+- [x] **XLS-01**: User can export event Packing List Excel with columns Name, Quantity, Box, Notes
+- [x] **XLS-02**: User can export event Post-event Report Excel with columns Name, Quantity, Loss, Box, Notes
+- [x] **XLS-03**: Exported files reflect current event values at export time
 
 ### Platform and Deployment
 
@@ -118,9 +118,9 @@
 | LOS-02 | Phase 5 | Complete |
 | LOS-03 | Phase 5 | Complete |
 | LOS-04 | Phase 5 | Complete |
-| XLS-01 | Phase 5 | Pending |
-| XLS-02 | Phase 5 | Pending |
-| XLS-03 | Phase 5 | Pending |
+| XLS-01 | Phase 5 | Complete |
+| XLS-02 | Phase 5 | Complete |
+| XLS-03 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 35 total
