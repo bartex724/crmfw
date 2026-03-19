@@ -111,6 +111,19 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input)
     }),
+  bulkUpdateEventItemStatus: (
+    eventId: string,
+    input: {
+      eventItemIds: string[];
+      status: 'TO_PACK' | 'PACKED' | 'RETURNED' | 'LOSS';
+      forceToPack?: boolean;
+    }
+  ) =>
+    request<{ items: EventItemRow[] }>(`/events/${eventId}/items/status/bulk`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input)
+    }),
   listBoxes: (params?: URLSearchParams) =>
     request<{ boxes: BoxRow[] }>(params ? `/boxes?${params.toString()}` : '/boxes'),
   createBox: (input: { boxCode: string; name: string; notes?: string }) =>
@@ -118,5 +131,23 @@ export const api = {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input)
+    }),
+  assignBoxItems: (boxId: string, input: { itemIds: string[] }) =>
+    request<{ assignment: Record<string, unknown> }>(`/boxes/${boxId}/items`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input)
+    }),
+  addBoxToEvent: (eventId: string, boxId: string) =>
+    request<{ result: Record<string, unknown> }>(`/events/${eventId}/boxes/${boxId}/add`, {
+      method: 'POST'
+    }),
+  addMissingBoxItems: (eventId: string, boxId: string) =>
+    request<{ result: Record<string, unknown> }>(`/events/${eventId}/boxes/${boxId}/add-missing`, {
+      method: 'POST'
+    }),
+  removeBoxFromEvent: (eventId: string, boxId: string) =>
+    request<{ result: Record<string, unknown> }>(`/events/${eventId}/boxes/${boxId}`, {
+      method: 'DELETE'
     })
 };

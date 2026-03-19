@@ -190,8 +190,12 @@ function EventsModule(): JSX.Element {
   const ant = AntApp.useApp();
   const queryClient = useQueryClient();
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedEventItemIds, setSelectedEventItemIds] = useState<string[]>([]);
+  const [bulkStatus, setBulkStatus] = useState<ItemStatus>('PACKED');
+  const [selectedBoxIdForEvent, setSelectedBoxIdForEvent] = useState<string>('');
   const listQuery = useQuery({ queryKey: ['events', 'list'], queryFn: api.listEvents });
   const detailQuery = useQuery({ queryKey: ['events', 'detail', selectedEventId], queryFn: () => api.getEvent(selectedEventId as string), enabled: Boolean(selectedEventId) });
+  const boxesQuery = useQuery({ queryKey: ['boxes', 'for-events'], queryFn: () => api.listBoxes() });
   const catalogParams = useMemo(() => { const p = new URLSearchParams(); p.set('layout', 'compact'); p.set('sortBy', 'name'); p.set('sortOrder', 'asc'); return p; }, []);
   const catalogQuery = useQuery({ queryKey: ['inventory', 'items', 'catalog', catalogParams.toString()], queryFn: () => api.listItems(catalogParams) });
   const createForm = useForm<CreateEventForm>({ resolver: zodResolver(createEventSchema), defaultValues: { name: '', eventDate: '', location: '', notes: '' } });
@@ -220,12 +224,44 @@ function EventsModule(): JSX.Element {
     onError: (error) => ant.message.error(errMsg(error, 'Unable to update status'))
   });
 
+  const bulkUpdate = useMutation({
+    mutationFn: (input: { eventItemIds: string[]; status: ItemStatus }) =>
+      api.bulkUpdateEventItemStatus(selectedEventId as string, {
+        eventItemIds: input.eventItemIds,
+        status: input.status,
+        forceToPack: input.status === 'TO_PACK' ? true : undefined
+      }),
+    onSuccess: async () => {
+      setSelectedEventItemIds([]);
+      await queryClient.invalidateQueries({ queryKey: ['events', 'detail', selectedEventId] });
+      ant.message.success('Bulk status update complete.');
+    },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to bulk update statuses'))
+  });
+
+  const eventBoxAction = useMutation({
+    mutationFn: async (input: { action: 'add' | 'addMissing' | 'remove'; boxId: string }) => {
+      if (input.action === 'add') {
+        return api.addBoxToEvent(selectedEventId as string, input.boxId);
+      }
+      if (input.action === 'addMissing') {
+        return api.addMissingBoxItems(selectedEventId as string, input.boxId);
+      }
+      return api.removeBoxFromEvent(selectedEventId as string, input.boxId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['events', 'detail', selectedEventId] });
+      ant.message.success('Event-box action complete.');
+    },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to execute event-box action'))
+  });
+
   const eventCols: ColumnsType<EventRow> = [
     { title: 'Name', dataIndex: 'name' },
     { title: 'Date', dataIndex: 'eventDate', render: (d: string) => d?.slice(0, 10) ?? '-' },
     { title: 'Location', dataIndex: 'location' },
     { title: 'Status', dataIndex: 'lifecycleStatus' },
-    { title: '', render: (_, row) => <Button type={selectedEventId === row.id ? 'primary' : 'default'} onClick={() => setSelectedEventId(row.id)}>Open</Button> }
+    { title: '', render: (_, row) => <Button type={selectedEventId === row.id ? 'primary' : 'default'} onClick={() => { setSelectedEventId(row.id); setSelectedEventItemIds([]); }}>Open</Button> }
   ];
 
   return (
@@ -262,10 +298,65 @@ function EventsModule(): JSX.Element {
               <Button onClick={() => window.open(`/events/${selectedEventId}/exports/packing-list`, '_blank')}>Packing XLSX</Button>
               <Button onClick={() => window.open(`/events/${selectedEventId}/exports/post-event-report`, '_blank')}>Report XLSX</Button>
             </Form>
+            <Space wrap>
+              <Select
+                value={selectedBoxIdForEvent || undefined}
+                onChange={setSelectedBoxIdForEvent}
+                style={{ width: 300 }}
+                placeholder="Select box for event action"
+                options={(boxesQuery.data?.boxes ?? []).map((box) => ({
+                  value: box.id,
+                  label: `${box.boxCode} - ${box.name}`
+                }))}
+              />
+              <Button
+                onClick={() =>
+                  selectedBoxIdForEvent
+                    ? eventBoxAction.mutate({ action: 'add', boxId: selectedBoxIdForEvent })
+                    : ant.message.warning('Select box first.')
+                }
+              >
+                Add Box To Event
+              </Button>
+              <Button
+                onClick={() =>
+                  selectedBoxIdForEvent
+                    ? eventBoxAction.mutate({ action: 'addMissing', boxId: selectedBoxIdForEvent })
+                    : ant.message.warning('Select box first.')
+                }
+              >
+                Add Missing Items
+              </Button>
+              <Button
+                danger
+                onClick={() =>
+                  selectedBoxIdForEvent
+                    ? eventBoxAction.mutate({ action: 'remove', boxId: selectedBoxIdForEvent })
+                    : ant.message.warning('Select box first.')
+                }
+              >
+                Remove Box From Event
+              </Button>
+            </Space>
+            <Space wrap>
+              <Select value={bulkStatus} onChange={setBulkStatus} style={{ width: 160 }} options={[{ value: 'TO_PACK', label: 'TO_PACK' }, { value: 'PACKED', label: 'PACKED' }, { value: 'RETURNED', label: 'RETURNED' }, { value: 'LOSS', label: 'LOSS' }]} />
+              <Button
+                type="primary"
+                disabled={selectedEventItemIds.length === 0}
+                loading={bulkUpdate.isPending}
+                onClick={() => bulkUpdate.mutate({ eventItemIds: selectedEventItemIds, status: bulkStatus })}
+              >
+                Bulk Update ({selectedEventItemIds.length})
+              </Button>
+            </Space>
             <Table<EventItemRow>
               rowKey="id"
               loading={detailQuery.isLoading}
               dataSource={detailQuery.data?.items ?? []}
+              rowSelection={{
+                selectedRowKeys: selectedEventItemIds,
+                onChange: (keys) => setSelectedEventItemIds(keys.map(String))
+              }}
               pagination={{ pageSize: 10 }}
               columns={[
                 { title: 'Item', render: (_, row) => row.itemName ?? row.itemCode ?? '-' },
@@ -299,8 +390,14 @@ function BoxesModule(): JSX.Element {
   const ant = AntApp.useApp();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [selectedBoxId, setSelectedBoxId] = useState<string>('');
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
   const params = useMemo(() => { const p = new URLSearchParams(); p.set('sortBy', 'boxCode'); p.set('sortOrder', 'asc'); if (search.trim()) p.set('search', search.trim()); return p; }, [search]);
   const listQuery = useQuery({ queryKey: ['boxes', 'list', params.toString()], queryFn: () => api.listBoxes(params) });
+  const eventsQuery = useQuery({ queryKey: ['events', 'for-boxes'], queryFn: api.listEvents });
+  const itemsParams = useMemo(() => { const p = new URLSearchParams(); p.set('layout', 'compact'); p.set('sortBy', 'name'); p.set('sortOrder', 'asc'); return p; }, []);
+  const itemsQuery = useQuery({ queryKey: ['inventory', 'items', 'for-boxes', itemsParams.toString()], queryFn: () => api.listItems(itemsParams) });
   const form = useForm<CreateBoxForm>({ resolver: zodResolver(createBoxSchema), defaultValues: { boxCode: '', name: '', notes: '' } });
 
   const create = useMutation({
@@ -309,10 +406,33 @@ function BoxesModule(): JSX.Element {
     onError: (error) => ant.message.error(errMsg(error, 'Unable to create box'))
   });
 
+  const assignItems = useMutation({
+    mutationFn: (input: { boxId: string; itemIds: string[] }) => api.assignBoxItems(input.boxId, { itemIds: input.itemIds }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['boxes', 'list'] });
+      ant.message.success('Box items assigned.');
+    },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to assign items'))
+  });
+
+  const addBoxToEvent = useMutation({
+    mutationFn: (input: { eventId: string; boxId: string }) => api.addBoxToEvent(input.eventId, input.boxId),
+    onSuccess: () => ant.message.success('Box added to event.'),
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to add box to event'))
+  });
+
   const cols: ColumnsType<BoxRow> = [
     { title: 'Code', dataIndex: 'boxCode' },
     { title: 'Name', dataIndex: 'name' },
-    { title: 'Notes', dataIndex: 'notes', render: (v: string | null | undefined) => v ?? '-' }
+    { title: 'Notes', dataIndex: 'notes', render: (v: string | null | undefined) => v ?? '-' },
+    {
+      title: '',
+      render: (_, row) => (
+        <Button type={selectedBoxId === row.id ? 'primary' : 'default'} onClick={() => setSelectedBoxId(row.id)}>
+          Select
+        </Button>
+      )
+    }
   ];
 
   return (
@@ -327,6 +447,56 @@ function BoxesModule(): JSX.Element {
       </Card>
       <Card title="Boxes" extra={<Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" style={{ width: 220 }} />}>
         <Table rowKey="id" loading={listQuery.isLoading} dataSource={listQuery.data?.boxes ?? []} columns={cols} pagination={{ pageSize: 12 }} />
+      </Card>
+      <Card title="Box Assignments & Event Link">
+        <Space direction="vertical" className="full-width" size="middle">
+          <Space wrap>
+            <Text>Selected Box:</Text>
+            <Tag color={selectedBoxId ? 'blue' : 'default'}>{selectedBoxId || 'none'}</Tag>
+          </Space>
+          <Select
+            mode="multiple"
+            value={selectedItemIds}
+            onChange={(vals) => setSelectedItemIds(vals)}
+            style={{ width: '100%' }}
+            placeholder="Select inventory items for the box"
+            options={(itemsQuery.data?.items ?? []).map((item: Item) => ({
+              value: item.id,
+              label: `${item.name} (${item.code}) qty:${item.quantity}`
+            }))}
+          />
+          <Button
+            type="primary"
+            loading={assignItems.isPending}
+            onClick={() =>
+              selectedBoxId
+                ? assignItems.mutate({ boxId: selectedBoxId, itemIds: selectedItemIds })
+                : ant.message.warning('Select a box first.')
+            }
+          >
+            Replace Box Items
+          </Button>
+          <Select
+            value={selectedEventId || undefined}
+            onChange={setSelectedEventId}
+            style={{ width: '100%' }}
+            placeholder="Select event to link selected box"
+            options={(eventsQuery.data?.events ?? []).map((event) => ({
+              value: event.id,
+              label: `${event.name} (${event.lifecycleStatus})`
+            }))}
+          />
+          <Button
+            onClick={() =>
+              selectedBoxId && selectedEventId
+                ? addBoxToEvent.mutate({ boxId: selectedBoxId, eventId: selectedEventId })
+                : ant.message.warning('Select both box and event.')
+            }
+            loading={addBoxToEvent.isPending}
+          >
+            Add Selected Box To Event
+          </Button>
+        </Space>
       </Card>
     </Space>
   );
