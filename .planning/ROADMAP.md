@@ -85,7 +85,7 @@ Plans:
 Plans:
 - [x] 04-01-PLAN.md - Implement box domain foundation and dedicated CRUD API
 - [x] 04-02-PLAN.md - Implement box item assignment and event auto-expansion semantics
-- [ ] 04-03-PLAN.md - Implement deterministic box QR generation and configuration contract
+- [x] 04-03-PLAN.md - Implement deterministic box QR generation and configuration contract
 - [ ] 04-04-PLAN.md - Implement guarded scan/context workflow with explicit event selection
 
 ### Phase 5: Reconciliation and Excel Exports
@@ -114,5 +114,5 @@ Phases execute in numeric order: 2 -> 2.1 -> 2.2 -> 3 -> 3.1 -> 4
 | 1. Foundation and Access Control | 8/8 | Complete | 2026-03-19 |
 | 2. Inventory Catalog and Media | 3/3 | Complete    | 2026-03-19 |
 | 3. Event Packing Workflow | 2/2 | Complete    | 2026-03-19 |
-| 4. Box Automation and QR Flow | 2/4 | In Progress|  |
+| 4. Box Automation and QR Flow | 3/4 | In Progress|  |
 | 5. Reconciliation and Excel Exports | 0/3 | Not started | - |

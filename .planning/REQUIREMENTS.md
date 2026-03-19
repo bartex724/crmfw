@@ -33,7 +33,7 @@
 - [x] **BOX-02**: User can assign inventory items to a box definition
 - [x] **BOX-03**: Adding a box to an event automatically adds all items assigned to that box
 - [x] **BOX-04**: Adding a single item to an event does not automatically add the full box
-- [ ] **BOX-05**: Each box has a unique QR code
+- [x] **BOX-05**: Each box has a unique QR code
 - [ ] **BOX-06**: Scanning a box QR code opens the box page to manage related event item statuses
 
 ### Losses and Returns
@@ -112,7 +112,7 @@
 | BOX-02 | Phase 4 | Complete |
 | BOX-03 | Phase 4 | Complete |
 | BOX-04 | Phase 4 | Complete |
-| BOX-05 | Phase 4 | Pending |
+| BOX-05 | Phase 4 | Complete |
 | BOX-06 | Phase 4 | Pending |
 | LOS-01 | Phase 5 | Pending |
 | LOS-02 | Phase 5 | Pending |
