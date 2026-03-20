@@ -66,3 +66,15 @@ export type EventItemRow = {
   boxCode: string | null;
   boxLabel: string | null;
 };
+
+export type ItemPhoto = {
+  id: string;
+  itemId: string;
+  relativePath: string;
+  mimeType: string;
+  sizeBytes: number;
+  position: number;
+  isMain: boolean;
+  createdAt: string;
+  updatedAt: string;
+};

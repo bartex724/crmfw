@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { api, ApiError } from './lib/api';
 import { useUiStore } from './stores/ui.store';
-import type { BoxRow, EventItemRow, EventRow, Item } from './lib/types';
+import type { BoxRow, EventItemRow, EventRow, Item, ItemPhoto } from './lib/types';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -121,9 +121,17 @@ function InventoryModule(): JSX.Element {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [selectedMediaItemId, setSelectedMediaItemId] = useState<string>('');
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const params = useMemo(() => buildInventoryParams(search, categoryId), [search, categoryId]);
   const categoriesQuery = useQuery({ queryKey: ['inventory', 'categories'], queryFn: api.listCategories });
   const itemsQuery = useQuery({ queryKey: ['inventory', 'items', params.toString()], queryFn: () => api.listItems(params) });
+  const photosQuery = useQuery({
+    queryKey: ['inventory', 'photos', selectedMediaItemId],
+    queryFn: () => api.listItemPhotos(selectedMediaItemId),
+    enabled: Boolean(selectedMediaItemId)
+  });
   const categoryForm = useForm<CreateCategoryForm>({ resolver: zodResolver(createCategorySchema), defaultValues: { name: '', description: '' } });
   const itemForm = useForm<CreateItemForm>({ resolver: zodResolver(createItemSchema), defaultValues: { name: '', code: '', categoryId: '', quantity: 0, notes: '' } });
 
@@ -139,12 +147,60 @@ function InventoryModule(): JSX.Element {
     onError: (error) => ant.message.error(errMsg(error, 'Unable to create item'))
   });
 
+  const uploadPhoto = useMutation({
+    mutationFn: (input: { itemId: string; file: File; isMain: boolean }) =>
+      api.uploadItemPhoto(input.itemId, input.file, input.isMain),
+    onSuccess: async () => {
+      setUploadFile(null);
+      await queryClient.invalidateQueries({ queryKey: ['inventory', 'photos', selectedMediaItemId] });
+      await queryClient.invalidateQueries({ queryKey: ['inventory', 'items'] });
+      ant.message.success('Photo uploaded.');
+    },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to upload photo'))
+  });
+
+  const setMainPhoto = useMutation({
+    mutationFn: (input: { itemId: string; photoId: string }) => api.setMainPhoto(input.itemId, input.photoId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['inventory', 'photos', selectedMediaItemId] });
+      ant.message.success('Main photo updated.');
+    },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to set main photo'))
+  });
+
+  const deletePhoto = useMutation({
+    mutationFn: (input: { itemId: string; photoId: string }) => api.deletePhoto(input.itemId, input.photoId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['inventory', 'photos', selectedMediaItemId] });
+      ant.message.success('Photo deleted.');
+    },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to delete photo'))
+  });
+
+  const reorderPhotos = useMutation({
+    mutationFn: (input: { itemId: string; photoIds: string[] }) => api.reorderPhotos(input.itemId, input.photoIds),
+    onSuccess: async () => {
+      setSelectedPhotoIds([]);
+      await queryClient.invalidateQueries({ queryKey: ['inventory', 'photos', selectedMediaItemId] });
+      ant.message.success('Photo order updated.');
+    },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to reorder photos'))
+  });
+
   const columns: ColumnsType<Item> = [
     { title: 'Name', dataIndex: 'name' },
     { title: 'Code', dataIndex: 'code' },
     { title: 'Qty', dataIndex: 'quantity' },
     { title: 'Category', render: (_, row) => row.category?.name ?? '-' },
-    { title: 'Availability', render: (_, row) => (row.isUnavailable ? <Tag color="red">Unavailable</Tag> : <Tag color="green">In stock</Tag>) }
+    { title: 'Availability', render: (_, row) => (row.isUnavailable ? <Tag color="red">Unavailable</Tag> : <Tag color="green">In stock</Tag>) },
+    {
+      title: '',
+      render: (_, row) => (
+        <Button type={selectedMediaItemId === row.id ? 'primary' : 'default'} onClick={() => { setSelectedMediaItemId(row.id); setSelectedPhotoIds([]); }}>
+          Media
+        </Button>
+      )
+    }
   ];
 
   return (
@@ -181,6 +237,106 @@ function InventoryModule(): JSX.Element {
 
       <Card title="Items">
         <Table rowKey="id" loading={itemsQuery.isLoading} dataSource={itemsQuery.data?.items ?? []} columns={columns} pagination={{ pageSize: 12 }} />
+      </Card>
+
+      <Card title="Item Media">
+        <Space direction="vertical" className="full-width" size="middle">
+          <Select
+            value={selectedMediaItemId || undefined}
+            onChange={(value) => { setSelectedMediaItemId(value); setSelectedPhotoIds([]); }}
+            style={{ width: '100%' }}
+            placeholder="Select item for media management"
+            options={(itemsQuery.data?.items ?? []).map((item) => ({
+              value: item.id,
+              label: `${item.name} (${item.code})`
+            }))}
+          />
+          <Space wrap>
+            <Input
+              type="file"
+              onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+              style={{ width: 280 }}
+            />
+            <Button
+              type="primary"
+              disabled={!selectedMediaItemId || !uploadFile}
+              loading={uploadPhoto.isPending}
+              onClick={() =>
+                selectedMediaItemId && uploadFile
+                  ? uploadPhoto.mutate({ itemId: selectedMediaItemId, file: uploadFile, isMain: false })
+                  : null
+              }
+            >
+              Upload
+            </Button>
+            <Button
+              disabled={!selectedMediaItemId || !uploadFile}
+              loading={uploadPhoto.isPending}
+              onClick={() =>
+                selectedMediaItemId && uploadFile
+                  ? uploadPhoto.mutate({ itemId: selectedMediaItemId, file: uploadFile, isMain: true })
+                  : null
+              }
+            >
+              Upload As Main
+            </Button>
+            <Button
+              disabled={!selectedMediaItemId || selectedPhotoIds.length === 0}
+              loading={reorderPhotos.isPending}
+              onClick={() =>
+                selectedMediaItemId
+                  ? reorderPhotos.mutate({ itemId: selectedMediaItemId, photoIds: selectedPhotoIds })
+                  : null
+              }
+            >
+              Reorder Selected ({selectedPhotoIds.length})
+            </Button>
+          </Space>
+          <Table<ItemPhoto>
+            rowKey="id"
+            loading={photosQuery.isLoading}
+            dataSource={photosQuery.data?.photos ?? []}
+            rowSelection={{
+              selectedRowKeys: selectedPhotoIds,
+              onChange: (keys) => setSelectedPhotoIds(keys.map(String))
+            }}
+            pagination={{ pageSize: 8 }}
+            columns={[
+              { title: 'Path', dataIndex: 'relativePath' },
+              { title: 'Main', render: (_, row) => (row.isMain ? <Tag color="green">Main</Tag> : '-') },
+              { title: 'Size', dataIndex: 'sizeBytes' },
+              {
+                title: 'Actions',
+                render: (_, row) => (
+                  <Space>
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        selectedMediaItemId
+                          ? setMainPhoto.mutate({ itemId: selectedMediaItemId, photoId: row.id })
+                          : null
+                      }
+                      disabled={row.isMain}
+                    >
+                      Set Main
+                    </Button>
+                    <Button
+                      size="small"
+                      danger
+                      onClick={() =>
+                        selectedMediaItemId
+                          ? deletePhoto.mutate({ itemId: selectedMediaItemId, photoId: row.id })
+                          : null
+                      }
+                    >
+                      Delete
+                    </Button>
+                  </Space>
+                )
+              }
+            ]}
+          />
+        </Space>
       </Card>
     </Space>
   );
@@ -222,6 +378,19 @@ function EventsModule(): JSX.Element {
     mutationFn: (input: { eventItemId: string; status: ItemStatus }) => api.updateEventItemStatus(selectedEventId as string, input.eventItemId, { status: input.status, forceToPack: input.status === 'TO_PACK' ? true : undefined }),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['events', 'detail', selectedEventId] }); ant.message.success('Status updated.'); },
     onError: (error) => ant.message.error(errMsg(error, 'Unable to update status'))
+  });
+
+  const reconcileUpdate = useMutation({
+    mutationFn: (input: { eventItemId: string; lostQuantity: number; returnedQuantity: number }) =>
+      api.updateEventItemReconciliation(selectedEventId as string, input.eventItemId, {
+        lostQuantity: input.lostQuantity,
+        returnedQuantity: input.returnedQuantity
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['events', 'detail', selectedEventId] });
+      ant.message.success('Reconciliation updated.');
+    },
+    onError: (error) => ant.message.error(errMsg(error, 'Unable to update reconciliation'))
   });
 
   const bulkUpdate = useMutation({
@@ -361,11 +530,29 @@ function EventsModule(): JSX.Element {
               columns={[
                 { title: 'Item', render: (_, row) => row.itemName ?? row.itemCode ?? '-' },
                 { title: 'Planned', dataIndex: 'plannedQuantity' },
+                { title: 'Lost', dataIndex: 'lostQuantity' },
+                { title: 'Returned', dataIndex: 'returnedQuantity' },
                 { title: 'Box', dataIndex: 'boxLabel', render: (v: string | null) => v ?? '-' },
                 { title: 'Status', dataIndex: 'status' },
                 {
                   title: 'Change',
                   render: (_, row) => <EventStatusEditor initial={row.status} loading={statusUpdate.isPending} onSave={(status) => statusUpdate.mutate({ eventItemId: row.id, status })} />
+                },
+                {
+                  title: 'Reconciliation',
+                  render: (_, row) => (
+                    <ReconcileEditor
+                      row={row}
+                      loading={reconcileUpdate.isPending}
+                      onSave={(lostQuantity, returnedQuantity) =>
+                        reconcileUpdate.mutate({
+                          eventItemId: row.id,
+                          lostQuantity,
+                          returnedQuantity
+                        })
+                      }
+                    />
+                  )
                 }
               ]}
             />
@@ -382,6 +569,24 @@ function EventStatusEditor(props: { initial: ItemStatus; loading: boolean; onSav
     <Space>
       <Select value={status} onChange={setStatus} style={{ width: 130 }} options={[{ value: 'TO_PACK', label: 'TO_PACK' }, { value: 'PACKED', label: 'PACKED' }, { value: 'RETURNED', label: 'RETURNED' }, { value: 'LOSS', label: 'LOSS' }]} />
       <Button size="small" onClick={() => props.onSave(status)} loading={props.loading}>Save</Button>
+    </Space>
+  );
+}
+
+function ReconcileEditor(props: {
+  row: EventItemRow;
+  loading: boolean;
+  onSave: (lostQuantity: number, returnedQuantity: number) => void;
+}): JSX.Element {
+  const [lost, setLost] = useState<number>(props.row.lostQuantity ?? 0);
+  const [returned, setReturned] = useState<number>(props.row.returnedQuantity ?? 0);
+  return (
+    <Space>
+      <InputNumber min={0} value={lost} onChange={(n) => setLost(Number(n ?? 0))} />
+      <InputNumber min={0} value={returned} onChange={(n) => setReturned(Number(n ?? 0))} />
+      <Button size="small" loading={props.loading} onClick={() => props.onSave(lost, returned)}>
+        Save
+      </Button>
     </Space>
   );
 }

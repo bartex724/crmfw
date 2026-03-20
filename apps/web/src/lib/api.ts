@@ -1,4 +1,4 @@
-import type { AuthUser, BoxRow, Category, EventDetail, EventItemRow, EventRow, Item } from './types';
+import type { AuthUser, BoxRow, Category, EventDetail, EventItemRow, EventRow, Item, ItemPhoto } from './types';
 
 const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
 
@@ -111,6 +111,16 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input)
     }),
+  updateEventItemReconciliation: (
+    eventId: string,
+    eventItemId: string,
+    input: { lostQuantity: number; returnedQuantity: number }
+  ) =>
+    request<{ item: EventItemRow }>(`/events/${eventId}/items/${eventItemId}/reconciliation`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input)
+    }),
   bulkUpdateEventItemStatus: (
     eventId: string,
     input: {
@@ -149,5 +159,29 @@ export const api = {
   removeBoxFromEvent: (eventId: string, boxId: string) =>
     request<{ result: Record<string, unknown> }>(`/events/${eventId}/boxes/${boxId}`, {
       method: 'DELETE'
+    }),
+  listItemPhotos: (itemId: string) => request<{ photos: ItemPhoto[] }>(`/inventory/items/${itemId}/photos`),
+  uploadItemPhoto: (itemId: string, file: File, isMain = false) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('isMain', isMain ? 'true' : 'false');
+    return request<{ photo: ItemPhoto }>(`/inventory/items/${itemId}/photos`, {
+      method: 'POST',
+      body: form
+    });
+  },
+  setMainPhoto: (itemId: string, photoId: string) =>
+    request<{ photo: ItemPhoto }>(`/inventory/items/${itemId}/photos/${photoId}/main`, {
+      method: 'PATCH'
+    }),
+  deletePhoto: (itemId: string, photoId: string) =>
+    request<{ deleted: true; id: string }>(`/inventory/items/${itemId}/photos/${photoId}`, {
+      method: 'DELETE'
+    }),
+  reorderPhotos: (itemId: string, photoIds: string[]) =>
+    request<{ photos: ItemPhoto[] }>(`/inventory/items/${itemId}/photos/reorder`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ photoIds })
     })
 };
